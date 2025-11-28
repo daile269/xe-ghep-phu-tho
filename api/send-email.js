@@ -9,7 +9,27 @@ import nodemailer from 'nodemailer';
  */
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  // CORS: allow requests from browser clients. You can set CORS_ORIGIN in env
+  // to restrict allowed origins. Default to '*' for convenience during development.
+  const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+  const setCors = () => {
+    res.setHeader('Access-Control-Allow-Origin', CORS_ORIGIN);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  };
+
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    setCors();
+    return res.status(204).end();
+  }
+
+  // Only POST is meaningful for this endpoint
+  if (req.method !== 'POST') {
+    setCors();
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  setCors();
 
   const { type, payload } = req.body || {};
 
