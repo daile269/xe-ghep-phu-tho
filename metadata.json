@@ -1,0 +1,7 @@
+{
+  "name": "Xe ghép PhuTho",
+  "description": "Ứng dụng tìm kiếm và chia sẻ chuyến đi tuyến Phú Thọ - Hà Nội, giúp kết nối tài xế và hành khách.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

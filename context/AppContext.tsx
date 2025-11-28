@@ -1,0 +1,591 @@
+
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { User, Ride, Booking, RideStatus, BookingStatus, RideType, RideRequest, DriverStatus, Transaction, TransactionType, TransactionStatus, SystemSettings } from '../types';
+import { db } from '../firebaseConfig';
+import { ref, onValue, set, update, push, remove } from 'firebase/database';
+
+interface SearchCriteria {
+  origin?: string;
+  destination?: string;
+  date?: string;
+  specificPickup?: string;
+  specificDropoff?: string;
+  maxPrice?: number;
+  rideType?: RideType | string;
+}
+
+interface AppContextType {
+  isAppReady: boolean; // Trạng thái sẵn sàng của ứng dụng
+  currentUser: User | null;
+  allUsers: User[];
+  rides: Ride[];
+  bookings: Booking[];
+  rideRequests: RideRequest[];
+  transactions: Transaction[];
+  systemSettings: SystemSettings;
+  login: (phoneOrUsername: string, password?: string) => boolean;
+  logout: () => void;
+  updateUserProfile: (name: string, phone: string) => void;
+  refreshUserData: () => void;
+  
+  // Driver / User Functions
+  registerDriver: (carModel: string, licensePlate: string, licenseNumber: string) => void;
+  createRide: (ride: Omit<Ride, 'id' | 'driverId' | 'status' | 'seatsAvailable' | 'driverName' | 'driverAvatar' | 'driverPhone'>) => void;
+  createRideRequest: (request: Omit<RideRequest, 'id' | 'passengerId' | 'status' | 'createdAt'> & { passengerId?: string }) => void;
+  searchRides: (criteria: SearchCriteria) => Ride[];
+  bookRide: (rideId: string, seats: number) => void;
+  confirmBooking: (bookingId: string) => void;
+  cancelBooking: (bookingId: string) => void;
+  cancelRide: (rideId: string) => void;
+  cancelRideRequest: (requestId: string) => void;
+  acceptRideRequest: (requestId: string) => void;
+  completeRideRequest: (requestId: string) => void;
+  cancelAcceptedRequest: (requestId: string) => void;
+  topUpWallet: (amount: number) => void;
+  withdrawWallet: (amount: number, bankInfo: string) => void;
+
+  // Admin Functions
+  approveDriver: (userId: string) => void;
+  rejectDriver: (userId: string) => void;
+  blockUser: (userId: string, isBlocked: boolean) => void;
+  adminUpdateWallet: (userId: string, amount: number, description: string) => void;
+  approveTransaction: (transactionId: string, bankRefCode?: string) => void;
+  rejectTransaction: (transactionId: string) => void;
+  updateSystemSettings: (settings: SystemSettings) => void;
+}
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+// Key mặc định cho LocalStorage (chỉ dùng để lưu phiên đăng nhập của máy hiện tại)
+const STORAGE_KEY_CURRENT_USER_ID = 'xe_ghep_current_user_id';
+
+const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
+    bankId: 'VCB',
+    bankName: 'Vietcombank',
+    accountNumber: '0123456789',
+    accountOwner: 'NGUYEN VAN ADMIN'
+};
+
+export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  // --- STATE ---
+  const [isAppReady, setIsAppReady] = useState(false); // New: Loading State
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [rides, setRides] = useState<Ride[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [rideRequests, setRideRequests] = useState<RideRequest[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SYSTEM_SETTINGS);
+  
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+      return localStorage.getItem(STORAGE_KEY_CURRENT_USER_ID);
+  });
+  
+  const currentUser = allUsers.find(u => u.id === currentUserId) || null;
+
+  // --- FIREBASE LISTENERS (REALTIME SYNC) ---
+  
+  useEffect(() => {
+      // 1. Sync Users
+      const usersRef = ref(db, 'users');
+      const unsubUsers = onValue(usersRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+              setAllUsers(Object.values(data));
+          } else {
+              setAllUsers([]);
+          }
+          // Khi đã tải xong users lần đầu tiên, ta coi như App đã sẵn sàng (để check login)
+          setIsAppReady(true);
+      }, (error) => {
+          console.error("Firebase Error:", error);
+          // Ngay cả khi lỗi, cũng nên set ready để không treo loading mãi mãi
+          setIsAppReady(true);
+      });
+
+      // 2. Sync Rides
+      const ridesRef = ref(db, 'rides');
+      const unsubRides = onValue(ridesRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+              // Convert object to array and sort by new
+              const ridesArr: Ride[] = Object.values(data);
+              setRides(ridesArr.sort((a, b) => new Date(b.departureTime).getTime() - new Date(a.departureTime).getTime()));
+          } else {
+              setRides([]);
+          }
+      });
+
+      // 3. Sync Bookings
+      const bookingsRef = ref(db, 'bookings');
+      const unsubBookings = onValue(bookingsRef, (snapshot) => {
+          const data = snapshot.val();
+          setBookings(data ? Object.values(data) : []);
+      });
+
+      // 4. Sync Requests
+      const requestsRef = ref(db, 'rideRequests');
+      const unsubRequests = onValue(requestsRef, (snapshot) => {
+           const data = snapshot.val();
+           if (data) {
+               const reqArr: RideRequest[] = Object.values(data);
+               setRideRequests(reqArr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+           } else {
+               setRideRequests([]);
+           }
+      });
+
+      // 5. Sync Transactions
+      const transactionsRef = ref(db, 'transactions');
+      const unsubTransactions = onValue(transactionsRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+              const transArr: Transaction[] = Object.values(data);
+              setTransactions(transArr.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+          } else {
+              setTransactions([]);
+          }
+      });
+
+      // 6. Sync System Settings
+      const settingsRef = ref(db, 'systemSettings');
+      const unsubSettings = onValue(settingsRef, (snapshot) => {
+          const data = snapshot.val();
+          if (data) setSystemSettings(data);
+      });
+
+      return () => {
+          unsubUsers();
+          unsubRides();
+          unsubBookings();
+          unsubRequests();
+          unsubTransactions();
+          unsubSettings();
+      };
+  }, []);
+
+  // --- AUTH ---
+  
+  useEffect(() => {
+      if (currentUserId) {
+          localStorage.setItem(STORAGE_KEY_CURRENT_USER_ID, currentUserId);
+      } else {
+          localStorage.removeItem(STORAGE_KEY_CURRENT_USER_ID);
+      }
+  }, [currentUserId]);
+
+  const login = (phoneOrUsername: string, password?: string) => {
+    // Admin Login Logic
+    if (phoneOrUsername === 'admin') {
+        console.log("Admin login attempt");
+        if (password === '654789@&$%Tktefvca') {
+            const adminUser = allUsers.find(u => u.id === 'admin');
+            if (adminUser) {
+                setCurrentUserId(adminUser.id);
+            } else {
+                // Initialize Admin if not exists in DB
+                const newAdmin: User = { 
+                    id: 'admin', 
+                    name: 'Super Admin', 
+                    email: 'admin@system.com', 
+                    phone: '0999999999', 
+                    avatar: 'https://ui-avatars.com/api/?name=Admin&background=000&color=fff', 
+                    isDriver: false, 
+                    driverStatus: DriverStatus.NONE, 
+                    walletBalance: 0, 
+                    isAdmin: true 
+                };
+                set(ref(db, 'users/admin'), newAdmin);
+                setCurrentUserId('admin');
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    // Normal User Logic
+    const existingUser = allUsers.find(u => u.phone === phoneOrUsername);
+    if (existingUser) {
+        if (existingUser.isAdmin) {
+             alert("Vui lòng đăng nhập bằng tài khoản quản trị viên (username: admin) và mật khẩu.");
+             return false;
+        }
+        if (existingUser.isBlocked) {
+            alert('Tài khoản của bạn đã bị khóa.');
+            return false;
+        }
+        setCurrentUserId(existingUser.id);
+    } else {
+        // Create new user in Firebase
+        const newId = `u${Date.now()}`;
+        const newUser: User = {
+            id: newId,
+            name: '', 
+            email: '',
+            phone: phoneOrUsername, 
+            avatar: `https://picsum.photos/100/100?random=${Date.now()}`,
+            isDriver: false,
+            driverStatus: DriverStatus.NONE,
+            walletBalance: 0
+        };
+        set(ref(db, 'users/' + newId), newUser);
+        setCurrentUserId(newId);
+    }
+    return true;
+  };
+
+  const logout = () => setCurrentUserId(null);
+
+  const refreshUserData = () => {
+      // Firebase onValue handles automatic refresh, this is mostly for compatibility
+      console.log("Data synced with Firebase");
+  };
+
+  // --- ACTIONS (WRITING TO FIREBASE) ---
+
+  const updateUserProfile = (name: string, phone: string) => {
+    if (!currentUser) return;
+    update(ref(db, `users/${currentUser.id}`), { name, phone });
+  };
+
+  const registerDriver = (carModel: string, licensePlate: string, licenseNumber: string) => {
+      if (!currentUser) return;
+      update(ref(db, `users/${currentUser.id}`), {
+          driverStatus: DriverStatus.PENDING,
+          carModel,
+          licensePlate,
+          licenseNumber
+      });
+  };
+
+  const approveDriver = (userId: string) => {
+      update(ref(db, `users/${userId}`), { driverStatus: DriverStatus.APPROVED, isDriver: true });
+  };
+
+  const rejectDriver = (userId: string) => {
+      update(ref(db, `users/${userId}`), { driverStatus: DriverStatus.REJECTED });
+  };
+
+  const blockUser = (userId: string, isBlocked: boolean) => {
+      update(ref(db, `users/${userId}`), { isBlocked });
+  };
+
+  const adminUpdateWallet = (userId: string, amount: number, description: string) => {
+      const user = allUsers.find(u => u.id === userId);
+      if (!user) return;
+      
+      const newBalance = (user.walletBalance || 0) + amount;
+      update(ref(db, `users/${userId}`), { walletBalance: newBalance });
+
+      const newTxId = `tx${Date.now()}`;
+      const newTrans: Transaction = {
+          id: newTxId,
+          userId: userId,
+          amount: amount,
+          type: amount >= 0 ? TransactionType.TOPUP : TransactionType.WITHDRAW,
+          description: description,
+          createdAt: new Date().toISOString(),
+          status: TransactionStatus.COMPLETED
+      };
+      set(ref(db, `transactions/${newTxId}`), newTrans);
+  };
+
+  const approveTransaction = (transactionId: string, bankRefCode?: string) => {
+      const transaction = transactions.find(t => t.id === transactionId);
+      if (!transaction || transaction.status !== TransactionStatus.PENDING) return;
+
+      update(ref(db, `transactions/${transactionId}`), { 
+          status: TransactionStatus.COMPLETED,
+          bankRefCode: bankRefCode || '' 
+      });
+
+      if (transaction.type === TransactionType.TOPUP) {
+          const user = allUsers.find(u => u.id === transaction.userId);
+          if (user) {
+              update(ref(db, `users/${user.id}`), { walletBalance: user.walletBalance + transaction.amount });
+          }
+      }
+  };
+
+  const rejectTransaction = (transactionId: string) => {
+      const transaction = transactions.find(t => t.id === transactionId);
+      if (!transaction || transaction.status !== TransactionStatus.PENDING) return;
+
+      update(ref(db, `transactions/${transactionId}`), { status: TransactionStatus.REJECTED });
+
+      // Nếu là rút tiền, hoàn lại tiền vào ví
+      if (transaction.type === TransactionType.WITHDRAW) {
+           const user = allUsers.find(u => u.id === transaction.userId);
+           if (user) {
+               update(ref(db, `users/${user.id}`), { walletBalance: user.walletBalance + Math.abs(transaction.amount) });
+           }
+      }
+  };
+
+  const updateSystemSettings = (settings: SystemSettings) => {
+      set(ref(db, 'systemSettings'), settings);
+  };
+
+  const topUpWallet = (amount: number) => {
+      if (!currentUser) return;
+      const newTxId = `tx${Date.now()}`;
+      const newTrans: Transaction = {
+          id: newTxId,
+          userId: currentUser.id,
+          amount: amount,
+          type: TransactionType.TOPUP,
+          description: 'Nạp tiền vào ví (Chờ duyệt)',
+          createdAt: new Date().toISOString(),
+          status: TransactionStatus.PENDING,
+          transferContent: `NAP ${currentUser.phone?.replace(/\s/g, '')}`
+      };
+      set(ref(db, `transactions/${newTxId}`), newTrans);
+  };
+
+  const withdrawWallet = (amount: number, bankInfo: string) => {
+      if (!currentUser) return;
+      if (currentUser.walletBalance < amount) {
+          alert("Số dư không đủ để thực hiện giao dịch.");
+          return;
+      }
+      
+      const newBalance = currentUser.walletBalance - amount;
+      update(ref(db, `users/${currentUser.id}`), { walletBalance: newBalance });
+      
+      const newTxId = `tx${Date.now()}`;
+      const newTrans: Transaction = {
+          id: newTxId,
+          userId: currentUser.id,
+          amount: -amount,
+          type: TransactionType.WITHDRAW,
+          description: `Rút tiền về NH`,
+          transferContent: bankInfo,
+          createdAt: new Date().toISOString(),
+          status: TransactionStatus.PENDING
+      };
+      set(ref(db, `transactions/${newTxId}`), newTrans);
+  };
+
+  const createRide = (rideData: Omit<Ride, 'id' | 'driverId' | 'status' | 'seatsAvailable' | 'driverName' | 'driverAvatar' | 'driverPhone'>) => {
+    if (!currentUser) return;
+    const newRideId = `r${Date.now()}`;
+    const newRide: Ride = {
+      ...rideData,
+      id: newRideId,
+      driverId: currentUser.id,
+      driverName: currentUser.name,
+      driverPhone: currentUser.phone,
+      driverAvatar: currentUser.avatar,
+      seatsAvailable: rideData.seatsTotal,
+      status: RideStatus.OPEN
+    };
+    set(ref(db, `rides/${newRideId}`), newRide);
+  };
+
+  const createRideRequest = (requestData: Omit<RideRequest, 'id' | 'passengerId' | 'status' | 'createdAt'> & { passengerId?: string }) => {
+    if (!currentUser) return;
+    const newReqId = `req${Date.now()}`;
+    const newRequest: RideRequest = {
+      ...requestData,
+      id: newReqId,
+      passengerId: requestData.passengerId || currentUser.id,
+      status: 'PENDING',
+      createdAt: new Date().toISOString()
+    };
+    set(ref(db, `rideRequests/${newReqId}`), newRequest);
+  };
+
+  const cancelRideRequest = (requestId: string) => {
+    update(ref(db, `rideRequests/${requestId}`), { status: 'CANCELLED' });
+  };
+
+  const acceptRideRequest = (requestId: string) => {
+      if (!currentUser) return;
+      update(ref(db, `rideRequests/${requestId}`), {
+          status: 'ACCEPTED',
+          driverId: currentUser.id,
+          driverName: currentUser.name,
+          driverPhone: currentUser.phone,
+          driverAvatar: currentUser.avatar
+      });
+  };
+
+  const completeRideRequest = (requestId: string) => {
+      if (!currentUser) return;
+      const request = rideRequests.find(r => r.id === requestId);
+      if (!request) return;
+
+      const PLATFORM_FEE_PERCENT = 0.01; // 1%
+      const platformFee = request.priceOffered * PLATFORM_FEE_PERCENT;
+      const referralFee = request.referralFee || 0;
+      const totalDeduction = platformFee + referralFee;
+
+      // 1. Update Request Status
+      update(ref(db, `rideRequests/${requestId}`), { status: 'COMPLETED' });
+
+      // 2. Deduct from Driver Wallet
+      update(ref(db, `users/${currentUser.id}`), { walletBalance: currentUser.walletBalance - totalDeduction });
+
+      // 3. Create Fee Transaction
+      const txFeeId = `tx${Date.now()}_fee`;
+      set(ref(db, `transactions/${txFeeId}`), {
+          id: txFeeId,
+          userId: currentUser.id,
+          amount: -platformFee,
+          type: TransactionType.RIDE_FEE,
+          description: `Phí sàn (1%) cho chuyến ${request.origin} - ${request.destination}`,
+          createdAt: new Date().toISOString(),
+          relatedRideId: requestId,
+          status: TransactionStatus.COMPLETED
+      });
+
+      // 4. Handle Commission
+      if (referralFee > 0) {
+           const txCommPaidId = `tx${Date.now()}_comm_paid`;
+           set(ref(db, `transactions/${txCommPaidId}`), {
+              id: txCommPaidId,
+              userId: currentUser.id,
+              amount: -referralFee,
+              type: TransactionType.COMMISSION_PAID,
+              description: `Trả hoa hồng cho chuyến ${request.origin} - ${request.destination}`,
+              createdAt: new Date().toISOString(),
+              relatedRideId: requestId,
+              status: TransactionStatus.COMPLETED
+           });
+
+           if (request.referrerId && request.referrerId !== currentUser.id) {
+               const referrer = allUsers.find(u => u.id === request.referrerId);
+               if (referrer) {
+                   update(ref(db, `users/${referrer.id}`), { walletBalance: (referrer.walletBalance || 0) + referralFee });
+                   
+                   const txCommRecvId = `tx${Date.now()}_comm_recv`;
+                   set(ref(db, `transactions/${txCommRecvId}`), {
+                      id: txCommRecvId,
+                      userId: request.referrerId,
+                      amount: referralFee,
+                      type: TransactionType.COMMISSION_RECEIVED,
+                      description: `Nhận hoa hồng từ chuyến ${request.origin} - ${request.destination}`,
+                      createdAt: new Date().toISOString(),
+                      relatedRideId: requestId,
+                      status: TransactionStatus.COMPLETED
+                   });
+               }
+           }
+      }
+  };
+
+  const cancelAcceptedRequest = (requestId: string) => {
+      update(ref(db, `rideRequests/${requestId}`), {
+          status: 'PENDING',
+          driverId: null,
+          driverName: null,
+          driverPhone: null,
+          driverAvatar: null
+      });
+  };
+
+  const searchRides = (criteria: SearchCriteria) => {
+    return rides.filter(ride => {
+      const matchOrigin = !criteria.origin || ride.origin.toLowerCase().includes(criteria.origin.toLowerCase());
+      const matchDest = !criteria.destination || ride.destination.toLowerCase().includes(criteria.destination.toLowerCase());
+      const matchDate = !criteria.date || ride.departureTime.startsWith(criteria.date);
+      const matchType = !criteria.rideType || criteria.rideType === 'ALL' || ride.rideType === criteria.rideType;
+      const matchPrice = !criteria.maxPrice || ride.price <= criteria.maxPrice;
+      const matchSpecificPickup = !criteria.specificPickup || 
+        (ride.description && ride.description.toLowerCase().includes(criteria.specificPickup.toLowerCase())) ||
+        ride.origin.toLowerCase().includes(criteria.specificPickup.toLowerCase());
+      const matchSpecificDropoff = !criteria.specificDropoff || 
+        (ride.description && ride.description.toLowerCase().includes(criteria.specificDropoff.toLowerCase())) ||
+        ride.destination.toLowerCase().includes(criteria.specificDropoff.toLowerCase());
+
+      return matchOrigin && matchDest && matchDate && matchType && matchPrice && matchSpecificPickup && matchSpecificDropoff && ride.status === RideStatus.OPEN;
+    });
+  };
+
+  const bookRide = (rideId: string, seats: number) => {
+    if (!currentUser) return;
+    const ride = rides.find(r => r.id === rideId);
+    if (!ride || ride.seatsAvailable < seats) return;
+
+    const newBookingId = `b${Date.now()}`;
+    const newBooking: Booking = {
+      id: newBookingId,
+      rideId,
+      passengerId: currentUser.id,
+      passengerName: currentUser.name,
+      passengerPhone: currentUser.phone,
+      seatsBooked: seats,
+      status: BookingStatus.PENDING,
+      bookingTime: new Date().toISOString(),
+      totalPrice: ride.price * seats 
+    };
+
+    set(ref(db, `bookings/${newBookingId}`), newBooking);
+    update(ref(db, `rides/${rideId}`), { seatsAvailable: ride.seatsAvailable - seats });
+  };
+
+  const confirmBooking = (bookingId: string) => {
+    update(ref(db, `bookings/${bookingId}`), { status: BookingStatus.CONFIRMED });
+  };
+
+  const cancelBooking = (bookingId: string) => {
+    const booking = bookings.find(b => b.id === bookingId);
+    if (!booking) return;
+    update(ref(db, `bookings/${bookingId}`), { status: BookingStatus.CANCELLED });
+    
+    const ride = rides.find(r => r.id === booking.rideId);
+    if (ride) {
+        update(ref(db, `rides/${ride.id}`), { seatsAvailable: ride.seatsAvailable + booking.seatsBooked });
+    }
+  };
+
+  const cancelRide = (rideId: string) => {
+      update(ref(db, `rides/${rideId}`), { status: RideStatus.CANCELLED });
+  };
+
+  return (
+    <AppContext.Provider value={{
+      isAppReady,
+      currentUser,
+      allUsers,
+      rides,
+      bookings,
+      rideRequests,
+      transactions,
+      systemSettings,
+      login,
+      logout,
+      updateUserProfile,
+      refreshUserData,
+      registerDriver,
+      approveDriver,
+      rejectDriver,
+      blockUser,
+      adminUpdateWallet,
+      approveTransaction,
+      rejectTransaction,
+      updateSystemSettings,
+      createRide,
+      createRideRequest,
+      searchRides,
+      bookRide,
+      confirmBooking,
+      cancelBooking,
+      cancelRide,
+      cancelRideRequest,
+      acceptRideRequest,
+      completeRideRequest,
+      cancelAcceptedRequest,
+      topUpWallet,
+      withdrawWallet
+    }}>
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) throw new Error("useApp must be used within AppProvider");
+  return context;
+};
