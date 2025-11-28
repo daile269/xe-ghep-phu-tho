@@ -1,4 +1,4 @@
-const nodemailer = require('nodemailer');
+import nodemailer from 'nodemailer';
 
 /**
  * Simple serverless email endpoint for Vercel/Netlify-like platforms.
@@ -8,7 +8,7 @@ const nodemailer = require('nodemailer');
  *   SMTP_USER, SMTP_PASS, FROM_EMAIL, ADMIN_EMAIL
  */
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { type, payload } = req.body || {};
@@ -72,4 +72,4 @@ module.exports = async (req, res) => {
     console.error('Error sending email', err);
     return res.status(500).json({ error: String(err) });
   }
-};
+}
