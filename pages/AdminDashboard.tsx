@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
 export const AdminDashboard: React.FC = () => {
-    const { isAppReady, currentUser, allUsers, transactions, systemSettings, rides, rideRequests, approveDriver, rejectDriver, grantDriverPermission, revokeDriverPermission, approveRide, rejectRide, approveRideRequest, rejectRideRequest, blockUser, adminUpdateWallet, approveTransaction, rejectTransaction, updateSystemSettings } = useApp();
+    const { isAppReady, currentUser, allUsers, transactions, systemSettings, rides, rideRequests, approveDriver, rejectDriver, grantDriverPermission, revokeDriverPermission, grantEmailPermission, revokeEmailPermission, approveRide, rejectRide, approveRideRequest, rejectRideRequest, blockUser, adminUpdateWallet, approveTransaction, rejectTransaction, updateSystemSettings, updateRideFee } = useApp();
   const navigate = useNavigate();
   
   // Lock Screen State
@@ -24,6 +24,7 @@ export const AdminDashboard: React.FC = () => {
     // Search + selection for permitted drivers tab
     const [permittedSearch, setPermittedSearch] = useState('');
     const [selectedPermittedDrivers, setSelectedPermittedDrivers] = useState<string[]>([]);
+    const [permittedFilter, setPermittedFilter] = useState<'all' | 'noMail'>('all');
   
   // Wallet Modal
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -116,6 +117,17 @@ export const AdminDashboard: React.FC = () => {
       u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       (u.phone && u.phone.includes(searchTerm))
   );
+
+  // Visible drivers for the 'permitted' tab (applies current filter + search)
+  const visibleDrivers = (() => {
+      const base = allUsers.filter(u => u.isDriver);
+      const filteredByFlag = permittedFilter === 'noMail' ? base.filter(u => u.canReceiveEmails !== true) : base;
+      const q = (permittedSearch || '').toLowerCase();
+      return filteredByFlag.filter(u => {
+          if (!q) return true;
+          return (u.name || '').toLowerCase().includes(q) || (u.phone || '').includes(q) || (u.email || '').toLowerCase().includes(q);
+      });
+  })();
 
   const handleWalletUpdate = (e: React.FormEvent) => {
       e.preventDefault();
@@ -312,6 +324,17 @@ export const AdminDashboard: React.FC = () => {
                                                )}
                                            </div>
                                        )}
+
+                                       {/* Email permission management */}
+                                       {driver.driverStatus === 'APPROVED' && (
+                                           <div className="mt-3">
+                                               {driver.canReceiveEmails === false ? (
+                                                   <button type="button" onClick={() => { if(window.confirm('Cấp quyền nhận mail cho tài xế này?')) { grantEmailPermission(driver.id); } }} className="w-full bg-green-600 text-white py-2 rounded-md font-medium hover:bg-green-700">Cấp quyền nhận mail</button>
+                                               ) : (
+                                                   <button type="button" onClick={() => { if(window.confirm('Thu hồi quyền nhận mail cho tài xế này?')) { revokeEmailPermission(driver.id); } }} className="w-full bg-yellow-100 text-yellow-800 py-2 rounded-md font-medium hover:bg-yellow-200">Thu hồi quyền nhận mail</button>
+                                               )}
+                                           </div>
+                                       )}
                                    </div>
                                </div>
                            ))}
@@ -335,11 +358,25 @@ export const AdminDashboard: React.FC = () => {
                                        <p className="text-sm text-gray-600">Tài xế: {r.driverName} ({r.driverPhone})</p>
                                        <p className="text-sm text-gray-500">Thời gian: {new Date(r.departureTime).toLocaleString('vi-VN')}</p>
                                        <p className="text-sm text-gray-500 mt-2">Giá: {r.price.toLocaleString('vi-VN')}đ • Ghế: {r.seatsAvailable}/{r.seatsTotal}</p>
+                                       <p className="text-sm text-gray-500 mt-1">Phí nền tảng: {(r.platformFeePercent || 0) * 100}%</p>
                                        {r.description && <p className="text-sm text-gray-700 mt-2">{r.description}</p>}
                                    </div>
                                    <div className="flex flex-col gap-2 w-full md:w-auto">
-                                       <button type="button" onClick={() => { if(window.confirm('Duyệt chuyến này?')) { approveRide(r.id); } }} className="bg-green-600 text-white px-4 py-2 rounded">Duyệt</button>
-                                       <button type="button" onClick={() => { const reason = window.prompt('Lý do từ chối (tuỳ chọn):',''); if(reason !== null) { rejectRide(r.id, reason); } }} className="bg-red-100 text-red-700 px-4 py-2 rounded">Từ chối</button>
+                                       <div className="flex gap-2">
+                                           <button type="button" onClick={() => { if(window.confirm('Duyệt chuyến này?')) { approveRide(r.id); } }} className="bg-green-600 text-white px-4 py-2 rounded">Duyệt</button>
+                                           <button type="button" onClick={() => { const reason = window.prompt('Lý do từ chối (tuỳ chọn):',''); if(reason !== null) { rejectRide(r.id, reason); } }} className="bg-red-100 text-red-700 px-4 py-2 rounded">Từ chối</button>
+                                       </div>
+                                       <button type="button" onClick={() => {
+                                           const input = window.prompt('Nhập phần trăm phí nền tảng cho chuyến này (VD: 1 cho 1%):', String((r.platformFeePercent || 0) * 100));
+                                           if (input !== null) {
+                                               const v = Number(input);
+                                               if (isNaN(v) || v < 0) { alert('Giá trị không hợp lệ'); return; }
+                                               if (!window.confirm(`Xác nhận cập nhật phí nền tảng thành ${v}% cho chuyến này?`)) return;
+                                               const newVal = v / 100;
+                                               updateRideFee(r.id, newVal);
+                                               alert('Đã cập nhật phí nền tảng');
+                                           }
+                                       }} className="mt-2 bg-blue-600 text-white px-4 py-2 rounded">Sửa phí</button>
                                    </div>
                                </div>
                            ))}
@@ -568,35 +605,57 @@ export const AdminDashboard: React.FC = () => {
                                 onChange={(e) => setPermittedSearch(e.target.value)}
                               />
                           </div>
-                          <button type="button" className="bg-red-100 text-red-700 px-4 py-2 rounded-md" onClick={() => {
-                              if (selectedPermittedDrivers.length === 0) { alert('Vui lòng chọn ít nhất một tài xế để thu hồi quyền.'); return; }
-                              if (!window.confirm(`Xác nhận thu hồi quyền cho ${selectedPermittedDrivers.length} tài xế đã chọn?`)) return;
-                              selectedPermittedDrivers.forEach(id => revokeDriverPermission(id));
-                              setSelectedPermittedDrivers([]);
-                          }}>Thu hồi quyền (chọn nhiều)</button>
+                          <div className="flex items-center gap-2">
+                              <button type="button" className="bg-green-600 text-white px-4 py-2 rounded-md" onClick={() => {
+                                  if (selectedPermittedDrivers.length === 0) { alert('Vui lòng chọn ít nhất một tài xế để cấp quyền nhận mail.'); return; }
+                                  if (!window.confirm(`Xác nhận cấp quyền nhận mail cho ${selectedPermittedDrivers.length} tài xế đã chọn?`)) return;
+                                  selectedPermittedDrivers.forEach(id => grantEmailPermission(id));
+                                  setSelectedPermittedDrivers([]);
+                              }}>Cấp quyền nhận mail (chọn nhiều)</button>
+
+                              <button type="button" className="bg-yellow-100 text-yellow-800 px-4 py-2 rounded-md" onClick={() => {
+                                  if (selectedPermittedDrivers.length === 0) { alert('Vui lòng chọn ít nhất một tài xế để thu hồi quyền nhận mail.'); return; }
+                                  if (!window.confirm(`Xác nhận thu hồi quyền nhận mail cho ${selectedPermittedDrivers.length} tài xế đã chọn?`)) return;
+                                  selectedPermittedDrivers.forEach(id => revokeEmailPermission(id));
+                                  setSelectedPermittedDrivers([]);
+                              }}>Thu hồi quyền nhận mail (chọn nhiều)</button>
+
+                              <button type="button" className="bg-red-100 text-red-700 px-4 py-2 rounded-md" onClick={() => {
+                                  if (selectedPermittedDrivers.length === 0) { alert('Vui lòng chọn ít nhất một tài xế để thu hồi quyền.'); return; }
+                                  if (!window.confirm(`Xác nhận thu hồi quyền cho ${selectedPermittedDrivers.length} tài xế đã chọn?`)) return;
+                                  selectedPermittedDrivers.forEach(id => revokeDriverPermission(id));
+                                  setSelectedPermittedDrivers([]);
+                              }}>Thu hồi quyền (chọn nhiều)</button>
+                          </div>
                       </div>
                   </div>
 
-                  <div className="bg-white rounded-lg shadow overflow-hidden">
+                      <div className="bg-white rounded-lg shadow overflow-hidden">
                       <div className="p-4 border-b">
-                          <label className="inline-flex items-center gap-2">
-                              <input type="checkbox" className="h-4 w-4" onChange={(e) => {
-                                  if (e.target.checked) {
-                                      const ids = allUsers.filter(u => u.isDriver).map(u => u.id);
-                                      setSelectedPermittedDrivers(ids);
-                                  } else {
-                                      setSelectedPermittedDrivers([]);
-                                  }
-                              }} />
-                              <span className="text-sm text-gray-600">Chọn tất cả tài xế được cấp quyền</span>
-                          </label>
+                          <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                  <label className="inline-flex items-center gap-2">
+                                      <input type="checkbox" className="h-4 w-4" onChange={(e) => {
+                                          if (e.target.checked) {
+                                              // select only drivers visible under current filter & search
+                                              const visibleIds = visibleDrivers.map(d => d.id);
+                                              setSelectedPermittedDrivers(visibleIds);
+                                          } else {
+                                              setSelectedPermittedDrivers([]);
+                                          }
+                                      }} />
+                                      <span className="text-sm text-gray-600">Chọn tất cả (danh sách hiện tại)</span>
+                                  </label>
+                                  <div className="flex items-center gap-2">
+                                      <button type="button" onClick={() => setPermittedFilter('all')} className={`px-3 py-1 rounded text-sm ${permittedFilter === 'all' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Tất cả</button>
+                                      <button type="button" onClick={() => setPermittedFilter('noMail')} className={`px-3 py-1 rounded text-sm ${permittedFilter === 'noMail' ? 'bg-slate-700 text-white' : 'bg-gray-100 text-gray-700'}`}>Chưa cấp mail</button>
+                                  </div>
+                              </div>
+                              <div />
+                          </div>
                       </div>
                       <ul className="divide-y divide-gray-200">
-                          {(allUsers.filter(u => u.isDriver).filter(u => {
-                              if (!permittedSearch) return true;
-                              const q = permittedSearch.toLowerCase();
-                              return (u.name || '').toLowerCase().includes(q) || (u.phone || '').includes(q) || (u.email || '').toLowerCase().includes(q);
-                          })).map(driver => (
+                          {visibleDrivers.map(driver => (
                               <li key={driver.id} className="p-4 flex items-center justify-between">
                                   <div className="flex items-center gap-4">
                                       <input type="checkbox" checked={selectedPermittedDrivers.includes(driver.id)} onChange={() => {
@@ -605,10 +664,22 @@ export const AdminDashboard: React.FC = () => {
                                       <div>
                                           <div className="font-medium text-gray-900">{driver.name || 'Chưa đặt tên'}</div>
                                           <div className="text-sm text-gray-500">{driver.phone} {driver.email ? `• ${driver.email}` : ''}</div>
+                                          <div className="text-xs mt-1">
+                                              {driver.canReceiveEmails === false ? (
+                                                  <span className="inline-block px-2 py-0.5 rounded bg-red-100 text-red-700">Không nhận mail</span>
+                                              ) : (
+                                                  <span className="inline-block px-2 py-0.5 rounded bg-green-100 text-green-700">Được nhận mail</span>
+                                              )}
+                                          </div>
                                       </div>
                                   </div>
                                   <div className="flex items-center gap-3">
                                       <button type="button" onClick={() => { if(window.confirm('Thu hồi quyền tài xế này?')) { revokeDriverPermission(driver.id); } }} className="text-red-600 hover:text-red-900">Thu hồi</button>
+                                      {driver.canReceiveEmails === false ? (
+                                          <button type="button" onClick={() => { if(window.confirm('Cấp quyền nhận mail cho tài xế này?')) { grantEmailPermission(driver.id); } }} className="text-green-600 hover:text-green-900">Cấp quyền nhận mail</button>
+                                      ) : (
+                                          <button type="button" onClick={() => { if(window.confirm('Thu hồi quyền nhận mail cho tài xế này?')) { revokeEmailPermission(driver.id); } }} className="text-yellow-700 hover:text-yellow-900">Thu hồi quyền nhận mail</button>
+                                      )}
                                   </div>
                               </li>
                           ))}
@@ -677,6 +748,21 @@ export const AdminDashboard: React.FC = () => {
                                   <div className="md:col-span-2 flex items-center gap-3">
                                       <input id="requireRideApproval" type="checkbox" className="h-4 w-4" checked={!!settingsForm.requireRideApproval} onChange={(e) => setSettingsForm({...settingsForm, requireRideApproval: e.target.checked})} />
                                       <label htmlFor="requireRideApproval" className="text-sm text-gray-700">Bật tính năng duyệt chuyến bởi Admin (chuyến do tài xế tạo sẽ chờ duyệt)</label>
+                                  </div>
+                                  <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-2">Phần trăm phí nền tảng mặc định</label>
+                                      <div className="flex items-center gap-2">
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            className="w-32 border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                                            value={(settingsForm.defaultPlatformFeePercent || 0) * 100}
+                                            onChange={e => setSettingsForm({...settingsForm, defaultPlatformFeePercent: Number(e.target.value) / 100})}
+                                          />
+                                          <span className="text-sm text-gray-600">%</span>
+                                      </div>
+                                      <p className="text-xs text-gray-500 mt-1">Ví dụ: nhập <strong>1</strong> để đặt 1% phí mặc định.</p>
                                   </div>
                                </div>
 

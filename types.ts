@@ -49,6 +49,13 @@ export interface SystemSettings {
   accountOwner: string;  // Tên chủ tài khoản
   // Nếu true thì mỗi chuyến do tài xế tạo sẽ cần admin duyệt trước khi public
   requireRideApproval?: boolean;
+  // Mặc định phần trăm phí nền tảng cho mỗi chuyến (ví dụ 0.01 = 1%)
+  defaultPlatformFeePercent?: number;
+  // Nearby-driver notification settings
+  // Radius in kilometers to search for nearby drivers when broadcasting a request
+  notifyRadiusKm?: number;
+  // Limit number of drivers to notify for a single broadcast
+  maxNotifiedDrivers?: number;
 }
 
 export interface Transaction {
@@ -83,9 +90,19 @@ export interface User {
   carModel?: string;
   licensePlate?: string;
   licenseNumber?: string;
+  // Whether this user (driver) is allowed to receive notification emails
+  canReceiveEmails?: boolean;
   
   // Wallet
   walletBalance: number;
+  // Optional geolocation for drivers (or users who share location). Stored under users/{id}/location
+  location?: {
+    lat: number;
+    lng: number;
+    // Optional accuracy in meters and timestamp when updated
+    accuracy?: number;
+    updatedAt?: string;
+  };
 }
 
 export interface Ride {
@@ -105,6 +122,8 @@ export interface Ride {
   driverPhone?: string;
   driverAvatar?: string;
   rideType: RideType;
+  // Platform fee percent for this ride (0.01 = 1%). Default: 0
+  platformFeePercent?: number;
 }
 
 export interface Booking {
@@ -145,4 +164,9 @@ export interface RideRequest {
   // Cơ chế Bắn khách (Referral)
   referrerId?: string; // ID của tài xế bắn khách
   referralFee?: number; // Hoa hồng cho người bắn (VNĐ)
+  // Platform fee percent applied to this request (0.01 = 1%). Default: 0
+  platformFeePercent?: number;
+  // Optional pickup coordinates (latitude / longitude) to support nearby-driver notifications
+  pickupLat?: number;
+  pickupLng?: number;
 }

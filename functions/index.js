@@ -127,7 +127,7 @@ exports.sendRideApprovedEmail = functions.database.ref('/rides/{rideId}')
       }
 
       const subject = `Chuyến của bạn đã được duyệt — ${after.origin || ''} → ${after.destination || ''}`;
-      const text = `Chuyến (ID: ${rideId}) của bạn đã được quản trị viên duyệt.\n\n` +
+      const text = `Chuyến (ID: ${rideId}) của khách đăng ký vừa được quản trị viên duyệt, hãy nhận chuyến nhé.\n\n` +
         `Lộ trình: ${after.origin} → ${after.destination}\n` +
         `Thời gian: ${after.departureTime}\n` +
         `Giá: ${after.price} VND\n` +

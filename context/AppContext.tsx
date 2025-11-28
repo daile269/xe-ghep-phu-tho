@@ -83,11 +83,25 @@ interface AppContextType {
   topUpWallet: (amount: number) => void;
   withdrawWallet: (amount: number, bankInfo: string) => void;
 
+  // Location & Nearby notification
+  updateDriverLocation: (lat: number, lng: number, accuracy?: number, userId?: string) => void;
+  notifyNearbyDrivers: (
+    pickupLat: number,
+    pickupLng: number,
+    radiusKm?: number,
+    maxDrivers?: number,
+    payload?: any
+  ) => Promise<{
+    notified: Array<{ driverId: string; email?: string; status?: number; error?: string }>;
+  }>;
+
   // Admin Functions
   approveDriver: (userId: string) => void;
   rejectDriver: (userId: string) => void;
   grantDriverPermission: (userId: string) => void;
   revokeDriverPermission: (userId: string) => void;
+  grantEmailPermission: (userId: string) => void;
+  revokeEmailPermission: (userId: string) => void;
   approveRide: (rideId: string) => void;
   rejectRide: (rideId: string, reason?: string) => void;
   approveRideRequest: (requestId: string) => void;
@@ -101,6 +115,7 @@ interface AppContextType {
   approveTransaction: (transactionId: string, bankRefCode?: string) => void;
   rejectTransaction: (transactionId: string) => void;
   updateSystemSettings: (settings: SystemSettings) => void;
+  updateRideFee: (rideId: string, percent: number) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -118,6 +133,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
 const DEFAULT_SYSTEM_SETTINGS_WITH_FLAG: SystemSettings = {
   ...DEFAULT_SYSTEM_SETTINGS,
   requireRideApproval: false,
+  defaultPlatformFeePercent: 0,
 };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({
@@ -383,6 +399,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     });
   };
 
+  // Grant permission for a driver to receive notification emails
+  const grantEmailPermission = (userId: string) => {
+    update(ref(db, `users/${userId}`), {
+      canReceiveEmails: true,
+    });
+  };
+
+  // Revoke permission for a driver to receive notification emails
+  const revokeEmailPermission = (userId: string) => {
+    update(ref(db, `users/${userId}`), {
+      canReceiveEmails: false,
+    });
+  };
+
   const blockUser = (userId: string, isBlocked: boolean) => {
     update(ref(db, `users/${userId}`), { isBlocked });
   };
@@ -455,6 +485,151 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     set(ref(db, "systemSettings"), settings);
   };
 
+  // --- LOCATION / NOTIFY HELPERS ---
+  // Haversine distance in kilometers between two lat/lng points
+  const haversineKm = (
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ) => {
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const R = 6371; // Earth radius km
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // Update a driver's location in the DB (driver can call this to publish their location)
+  const updateDriverLocation = (
+    lat: number,
+    lng: number,
+    accuracy?: number,
+    userId?: string
+  ) => {
+    const id = userId || currentUser?.id;
+    if (!id) return;
+    try {
+      const loc = { lat, lng, accuracy: accuracy || 0, updatedAt: new Date().toISOString() };
+      update(ref(db, `users/${id}/location`), loc);
+    } catch (err) {
+      console.warn('updateDriverLocation: failed to write location', err);
+    }
+  };
+
+  // Notify nearby drivers by location. Returns array of results.
+  const notifyNearbyDrivers = async (
+    pickupLat: number,
+    pickupLng: number,
+    radiusKm?: number,
+    maxDrivers?: number,
+    payload?: any
+  ) => {
+    const endpoint = EMAIL_ENDPOINT;
+    const results: Array<{ driverId: string; email?: string; status?: number; error?: string }> = [];
+
+    const radius = typeof radiusKm === 'number' ? radiusKm : systemSettings?.notifyRadiusKm || 10;
+    const limit = typeof maxDrivers === 'number' ? maxDrivers : systemSettings?.maxNotifiedDrivers || 20;
+
+    // Collect candidate drivers with location and email permission
+    const candidates = allUsers
+      .filter(
+        (u) =>
+          u.isDriver &&
+          u.driverStatus === DriverStatus.APPROVED &&
+          u.email &&
+          u.canReceiveEmails !== false &&
+          u.location &&
+          typeof u.location.lat === 'number' &&
+          typeof u.location.lng === 'number'
+      )
+      .map((d) => ({
+        id: d.id,
+        email: d.email,
+        lat: d.location!.lat,
+        lng: d.location!.lng,
+      }))
+      .map((d) => ({
+        ...d,
+        distanceKm: haversineKm(pickupLat, pickupLng, d.lat, d.lng),
+      }))
+      .filter((d) => d.distanceKm <= radius)
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, limit);
+
+    if (candidates.length === 0) {
+      try {
+        set(ref(db, `debug/emailLogs/${Date.now()}_notifyNearby_none`), {
+          event: 'notifyNearbyDrivers_none_found',
+          pickup: { lat: pickupLat, lng: pickupLng },
+          radiusKm: radius,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        // ignore
+      }
+      return { notified: results };
+    }
+
+    // Send notifications in parallel (bounded by candidates.length)
+    const promises = candidates.map((c) =>
+      fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'ride_nearby',
+          payload: {
+            pickupLat,
+            pickupLng,
+            driverId: c.id,
+            driverEmail: c.email,
+            distanceKm: c.distanceKm,
+            originalPayload: payload || null,
+          },
+        }),
+      })
+        .then(async (resp) => {
+          let data: any = null;
+          try {
+            data = await resp.json();
+          } catch (e) {
+            data = await resp.text();
+          }
+          results.push({ driverId: c.id, email: c.email, status: resp.status });
+          return { driverId: c.id, status: resp.status, data };
+        })
+        .catch((err) => {
+          results.push({ driverId: c.id, email: c.email, error: String(err) });
+          return { driverId: c.id, error: String(err) };
+        })
+    );
+
+    const settled = await Promise.all(promises);
+
+    // Write debug log
+    try {
+      set(ref(db, `debug/emailLogs/${Date.now()}_notifyNearby`), {
+        event: 'notifyNearbyDrivers_results',
+        pickup: { lat: pickupLat, lng: pickupLng },
+        radiusKm: radius,
+        candidatesCount: candidates.length,
+        results,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e) {
+      // ignore
+    }
+
+    return { notified: results };
+  };
+
   const topUpWallet = (amount: number) => {
     if (!currentUser) return;
     const newTxId = `tx${Date.now()}`;
@@ -521,6 +696,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       status: systemSettings?.requireRideApproval
         ? (RideStatus.PENDING as Ride["status"])
         : RideStatus.OPEN,
+      platformFeePercent: systemSettings?.defaultPlatformFeePercent || 0,
     };
     set(ref(db, `rides/${newRideId}`), newRide);
 
@@ -566,7 +742,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
           ? allUsers.find((u) => u.id === driverId)
           : null;
         const driverEmail = driver?.email;
-        if (!driverEmail) {
+        // Respect driver's email permission flag: only send if not explicitly disabled
+        const driverAllowsEmail = driver ? driver.canReceiveEmails !== false : false;
+        if (!driverEmail || !driverAllowsEmail) {
           console.log(
             "approveRide: driver has no email, skipping notification",
             { rideId, driverId }
@@ -636,6 +814,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       // If system requires admin approval for new posts, mark as PENDING. Otherwise mark as APPROVED (visible).
       status: systemSettings?.requireRideApproval ? "PENDING" : "APPROVED",
       createdAt: new Date().toISOString(),
+      platformFeePercent: systemSettings?.defaultPlatformFeePercent || 0,
     };
     set(ref(db, `rideRequests/${newReqId}`), newRequest);
   };
@@ -687,8 +866,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         if (targetDriverId) {
           const driver = allUsers.find((u) => u.id === targetDriverId);
           const driverEmail = driver?.email;
+          const driverAllowsEmail = driver ? driver.canReceiveEmails !== false : false;
           if (!driverEmail) {
             console.log('approveRideRequest: target driver has no email, skipping notification', { requestId, targetDriverId });
+          } else if (!driverAllowsEmail) {
+            console.log('approveRideRequest: target driver is not allowed to receive emails, skipping', { requestId, targetDriverId });
           } else {
             console.log('approveRideRequest: calling email endpoint for assigned driver', { endpoint, requestId, driverEmail });
             const resp = await fetch(endpoint, {
@@ -730,54 +912,92 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
           }
         } else {
           // No specific driver assigned — broadcast to approved drivers
-          const drivers = allUsers.filter(
-            (u) => u.isDriver && u.driverStatus === DriverStatus.APPROVED && u.email
-          );
-          if (!drivers || drivers.length === 0) {
-            console.log('approveRideRequest: no approved drivers with email found, skipping broadcast', { requestId });
-            return;
-          }
-
-          console.log('approveRideRequest: broadcasting to drivers', { count: drivers.length, requestId });
-
-          const promises = drivers.map((d) =>
-            fetch(endpoint, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: 'ride_approved',
-                payload: {
-                  rideId: requestId,
-                  origin: req.origin,
-                  destination: req.destination,
-                  driverId: d.id,
-                  driverEmail: d.email,
-                  departureTime: req.pickupTime,
-                  price: req.priceOffered,
-                },
-              }),
-            }).then(async (resp) => {
-              let data: any = null;
+          // Only include drivers who have an email and who allow receiving emails
+          // No specific driver assigned — notify nearby drivers by location if available
+          // If request does not include a pickup location coordinates, fall back to previous broadcast behavior
+          if (req && typeof req.pickupLat === 'number' && typeof req.pickupLng === 'number') {
+            console.log('approveRideRequest: calling notifyNearbyDrivers', { requestId, pickupLat: req.pickupLat, pickupLng: req.pickupLng });
+            try {
+              const notifyRes = await notifyNearbyDrivers(req.pickupLat, req.pickupLng, undefined, undefined, {
+                requestId,
+                origin: req.origin,
+                destination: req.destination,
+                pickupTime: req.pickupTime,
+                price: req.priceOffered,
+              });
+              console.log('approveRideRequest: notifyNearbyDrivers results', { requestId, notifyRes });
               try {
-                data = await resp.json();
-              } catch (e) {
-                data = await resp.text();
+                set(ref(db, `debug/emailLogs/${Date.now()}_${requestId}`), {
+                  event: 'approveRideRequest_notifyNearby_results',
+                  requestId,
+                  notifyRes,
+                  timestamp: new Date().toISOString(),
+                });
+              } catch (err) {
+                console.warn('approveRideRequest: failed writing notifyNearby debug log', err);
               }
-              return { driverId: d.id, email: d.email, status: resp.status, data };
-            }).catch((err) => ({ driverId: d.id, email: d.email, error: String(err) }))
-          );
+            } catch (err) {
+              console.warn('approveRideRequest: notifyNearbyDrivers failed', err);
+              try {
+                set(ref(db, `debug/emailLogs/${Date.now()}_${requestId}`), {
+                  event: 'approveRideRequest_notifyNearby_error',
+                  requestId,
+                  error: String(err),
+                  timestamp: new Date().toISOString(),
+                });
+              } catch (e) {}
+            }
+          } else {
+            // Fallback: original broadcast to all approved drivers with email permission
+            const drivers = allUsers.filter(
+              (u) => u.isDriver && u.driverStatus === DriverStatus.APPROVED && u.email && (u.canReceiveEmails !== false)
+            );
+            if (!drivers || drivers.length === 0) {
+              console.log('approveRideRequest: no approved drivers with email found, skipping broadcast', { requestId });
+              return;
+            }
 
-          const results = await Promise.all(promises);
-          console.log('approveRideRequest: broadcast results', { requestId, results });
-          try {
-            set(ref(db, `debug/emailLogs/${Date.now()}_${requestId}`), {
-              event: 'approveRideRequest_broadcast_results',
-              requestId,
-              results,
-              timestamp: new Date().toISOString(),
-            });
-          } catch (err) {
-            console.warn('approveRideRequest: failed writing broadcast debug log', err);
+            console.log('approveRideRequest: broadcasting to drivers (fallback)', { count: drivers.length, requestId });
+
+            const promises = drivers.map((d) =>
+              fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  type: 'ride_approved',
+                  payload: {
+                    rideId: requestId,
+                    origin: req.origin,
+                    destination: req.destination,
+                    driverId: d.id,
+                    driverEmail: d.email,
+                    departureTime: req.pickupTime,
+                    price: req.priceOffered,
+                  },
+                }),
+              }).then(async (resp) => {
+                let data: any = null;
+                try {
+                  data = await resp.json();
+                } catch (e) {
+                  data = await resp.text();
+                }
+                return { driverId: d.id, email: d.email, status: resp.status, data };
+              }).catch((err) => ({ driverId: d.id, email: d.email, error: String(err) }))
+            );
+
+            const results = await Promise.all(promises);
+            console.log('approveRideRequest: broadcast results (fallback)', { requestId, results });
+            try {
+              set(ref(db, `debug/emailLogs/${Date.now()}_${requestId}`), {
+                event: 'approveRideRequest_broadcast_results',
+                requestId,
+                results,
+                timestamp: new Date().toISOString(),
+              });
+            } catch (err) {
+              console.warn('approveRideRequest: failed writing broadcast debug log', err);
+            }
           }
         }
       } catch (err) {
@@ -822,8 +1042,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     const request = rideRequests.find((r) => r.id === requestId);
     if (!request) return;
 
-    const PLATFORM_FEE_PERCENT = 0.01; // 1%
-    const platformFee = request.priceOffered * PLATFORM_FEE_PERCENT;
+    // Determine platform fee percent (request override -> system default -> 0)
+    const feePercent =
+      typeof request.platformFeePercent === "number"
+        ? request.platformFeePercent
+        : typeof systemSettings?.defaultPlatformFeePercent === "number"
+        ? systemSettings!.defaultPlatformFeePercent
+        : 0;
+
+    const platformFee = (request.priceOffered || 0) * (feePercent || 0);
     const referralFee = request.referralFee || 0;
     const totalDeduction = platformFee + referralFee;
 
@@ -835,18 +1062,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       walletBalance: currentUser.walletBalance - totalDeduction,
     });
 
-    // 3. Create Fee Transaction
+    // 3. Create Fee Transaction (driver side)
     const txFeeId = `tx${Date.now()}_fee`;
     set(ref(db, `transactions/${txFeeId}`), {
       id: txFeeId,
       userId: currentUser.id,
       amount: -platformFee,
       type: TransactionType.RIDE_FEE,
-      description: `Phí sàn (1%) cho chuyến ${request.origin} - ${request.destination}`,
+      description: `Phí nền tảng (${(feePercent * 100).toFixed(2)}%) cho chuyến ${request.origin} - ${request.destination}`,
       createdAt: new Date().toISOString(),
       relatedRideId: requestId,
       status: TransactionStatus.COMPLETED,
     });
+
+    // 3b. Credit the platform (admin) wallet with the collected fee
+    try {
+      const admin = allUsers.find((u) => u.id === "admin");
+      if (admin) {
+        update(ref(db, `users/${admin.id}`), {
+          walletBalance: (admin.walletBalance || 0) + platformFee,
+        });
+
+        const txAdminId = `tx${Date.now()}_platform_recv`;
+        set(ref(db, `transactions/${txAdminId}`), {
+          id: txAdminId,
+          userId: admin.id,
+          amount: platformFee,
+          type: TransactionType.COMMISSION_RECEIVED,
+          description: `Thu phí nền tảng (${(feePercent * 100).toFixed(2)}%) từ chuyến ${request.origin} - ${request.destination}`,
+          createdAt: new Date().toISOString(),
+          relatedRideId: requestId,
+          status: TransactionStatus.COMPLETED,
+        });
+      } else {
+        console.warn("completeRideRequest: admin user not found, skipping platform credit");
+      }
+    } catch (err) {
+      console.warn("completeRideRequest: failed to credit admin wallet", err);
+    }
 
     // 4. Handle Commission
     if (referralFee > 0) {
@@ -993,6 +1246,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     update(ref(db, `rides/${rideId}`), { status: RideStatus.CANCELLED });
   };
 
+  // Update platform fee percent for a ride (percent is decimal fraction, e.g. 0.01 = 1%)
+  const updateRideFee = (rideId: string, percent: number) => {
+    if (!rideId) return;
+    update(ref(db, `rides/${rideId}`), { platformFeePercent: percent });
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1013,6 +1272,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         rejectDriver,
         grantDriverPermission,
         revokeDriverPermission,
+        grantEmailPermission,
+        revokeEmailPermission,
         approveRide,
         rejectRide,
         approveRideRequest,
@@ -1035,6 +1296,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         cancelAcceptedRequest,
         topUpWallet,
         withdrawWallet,
+        updateDriverLocation,
+        notifyNearbyDrivers,
+        updateRideFee,
       }}
     >
       {children}
