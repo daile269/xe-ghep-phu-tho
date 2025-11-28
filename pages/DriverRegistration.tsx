@@ -11,7 +11,8 @@ export const DriverRegistration: React.FC = () => {
   const [formData, setFormData] = useState({
     carModel: '',
     licensePlate: '',
-    licenseNumber: ''
+    licenseNumber: '',
+    email: ''
   });
 
   useEffect(() => {
@@ -28,8 +29,8 @@ export const DriverRegistration: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.carModel && formData.licensePlate && formData.licenseNumber) {
-        registerDriver(formData.carModel, formData.licensePlate, formData.licenseNumber);
+    if (formData.carModel && formData.licensePlate && formData.licenseNumber && formData.email) {
+        registerDriver(formData.carModel, formData.licensePlate, formData.licenseNumber, formData.email);
     }
   };
 
@@ -188,6 +189,21 @@ export const DriverRegistration: React.FC = () => {
                     />
                  </div>
               </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email liên hệ</label>
+              <div className="relative">
+                <input 
+                 type="email" 
+                 name="email"
+                 required
+                 placeholder="Nhập email của bạn..."
+                 className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border"
+                 value={formData.email}
+                 onChange={handleChange}
+                />
+              </div>
+            </div>
            </div>
 
            <div className="pt-6">

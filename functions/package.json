@@ -1,0 +1,13 @@
+{
+  "name": "xe-ghep-phu-tho-functions",
+  "version": "1.0.0",
+  "main": "index.js",
+  "engines": {
+    "node": "18"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.3",
+    "firebase-admin": "^11.0.0",
+    "firebase-functions": "^4.0.0"
+  }
+}

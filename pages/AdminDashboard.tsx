@@ -2,25 +2,28 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { DriverStatus, User, TransactionType, TransactionStatus } from '../types';
+import { DriverStatus, User, TransactionType, TransactionStatus, RideStatus } from '../types';
 import { Shield, CheckCircle, XCircle, Search, Wallet, Lock, Unlock, ArrowUpRight, ArrowDownLeft, Settings, Save, RefreshCw, Key } from 'lucide-react';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
 
 export const AdminDashboard: React.FC = () => {
-    const { isAppReady, currentUser, allUsers, transactions, systemSettings, approveDriver, rejectDriver, blockUser, adminUpdateWallet, approveTransaction, rejectTransaction, updateSystemSettings } = useApp();
+    const { isAppReady, currentUser, allUsers, transactions, systemSettings, rides, rideRequests, approveDriver, rejectDriver, grantDriverPermission, revokeDriverPermission, approveRide, rejectRide, approveRideRequest, rejectRideRequest, blockUser, adminUpdateWallet, approveTransaction, rejectTransaction, updateSystemSettings } = useApp();
   const navigate = useNavigate();
   
   // Lock Screen State
   const [isLocked, setIsLocked] = useState(true);
   const [unlockPassword, setUnlockPassword] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'drivers' | 'users' | 'transactions' | 'system'>('drivers');
+    const [activeTab, setActiveTab] = useState<'drivers' | 'users' | 'transactions' | 'system' | 'rides' | 'permitted'>('drivers');
   
   // Driver Status Sub-tab
   const [driverStatusTab, setDriverStatusTab] = useState<'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
 
   const [searchTerm, setSearchTerm] = useState('');
+    // Search + selection for permitted drivers tab
+    const [permittedSearch, setPermittedSearch] = useState('');
+    const [selectedPermittedDrivers, setSelectedPermittedDrivers] = useState<string[]>([]);
   
   // Wallet Modal
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -157,13 +160,28 @@ export const AdminDashboard: React.FC = () => {
                    >
                        Duyệt Tài xế
                    </button>
-                   <button 
-                     type="button"
-                     onClick={() => setActiveTab('transactions')}
-                     className={`px-3 py-2 rounded-md font-medium text-sm md:text-base ${activeTab === 'transactions' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
-                   >
-                       Duyệt Giao dịch ({pendingTransactions.length})
-                   </button>
+                                     <button 
+                                         type="button"
+                                         onClick={() => setActiveTab('transactions')}
+                                         className={`px-3 py-2 rounded-md font-medium text-sm md:text-base ${activeTab === 'transactions' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
+                                     >
+                                             Duyệt Giao dịch ({pendingTransactions.length})
+                                     </button>
+                                    <button 
+                                        type="button"
+                                        // Rides approval tab
+                                        onClick={() => setActiveTab('rides')}
+                                        className={`px-3 py-2 rounded-md font-medium text-sm md:text-base ${activeTab === 'rides' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
+                                    >
+                                            Duyệt Chuyến ({(rides || []).filter(r => r.status === RideStatus.PENDING).length})
+                                    </button>
+                                       <button 
+                                        type="button"
+                                        onClick={() => setActiveTab('permitted')}
+                                        className={`px-3 py-2 rounded-md font-medium text-sm md:text-base ${activeTab === 'permitted' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
+                                        >
+                                            Tài xế được cấp quyền ({allUsers.filter(u => u.isDriver).length})
+                                        </button>
                    <button 
                      type="button"
                      onClick={() => setActiveTab('users')}
@@ -171,13 +189,13 @@ export const AdminDashboard: React.FC = () => {
                    >
                        Quản lý Users
                    </button>
-                   <button 
-                     type="button"
-                     onClick={() => setActiveTab('system')}
-                     className={`px-3 py-2 rounded-md font-medium text-sm md:text-base ${activeTab === 'system' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
-                   >
-                       <Settings size={18} className="inline mr-1" /> Cấu hình
-                   </button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setActiveTab('system')}
+                                        className={`px-3 py-2 rounded-md font-medium text-sm md:text-base ${activeTab === 'system' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
+                                    >
+                                            <Settings size={18} className="inline mr-1" /> Cấu hình
+                                    </button>
                </div>
            </div>
        </div>
@@ -283,11 +301,76 @@ export const AdminDashboard: React.FC = () => {
                                                Đã xử lý
                                            </div>
                                        )}
+
+                                       {/* Permission management: grant/revoke platform driving right */}
+                                       {driver.driverStatus === 'APPROVED' && (
+                                           <div className="mt-3">
+                                               {driver.isDriver ? (
+                                                   <button type="button" onClick={() => { if(window.confirm('Thu hồi quyền lái cho tài xế này?')) { revokeDriverPermission(driver.id); } }} className="w-full bg-red-100 text-red-700 py-2 rounded-md font-medium hover:bg-red-200">Thu hồi quyền</button>
+                                               ) : (
+                                                   <button type="button" onClick={() => { if(window.confirm('Cấp quyền lái cho tài xế này?')) { grantDriverPermission(driver.id); } }} className="w-full bg-green-600 text-white py-2 rounded-md font-medium hover:bg-green-700">Cấp quyền</button>
+                                               )}
+                                           </div>
+                                       )}
                                    </div>
                                </div>
                            ))}
                        </div>
                    )}
+               </div>
+           )}
+
+           {/* TAB ?: RIDES PENDING APPROVAL (TOP-LEVEL) */}
+           {activeTab === 'rides' && (
+               <div>
+                   <h2 className="text-xl font-bold text-gray-800 mb-6">Chuyến chờ duyệt ({(rides || []).filter(r => r.status === RideStatus.PENDING).length})</h2>
+                   {(rides || []).filter(r => r.status === RideStatus.PENDING).length === 0 ? (
+                       <div className="bg-white rounded-lg p-8 text-center text-gray-500 shadow-sm">Không có chuyến chờ duyệt.</div>
+                   ) : (
+                       <div className="grid gap-6">
+                           {(rides || []).filter(r => r.status === RideStatus.PENDING).map(r => (
+                               <div key={r.id} className="bg-white rounded-lg shadow p-6 flex flex-col md:flex-row justify-between items-start gap-4">
+                                   <div className="flex-1">
+                                       <p className="text-lg font-bold">{r.origin} → {r.destination}</p>
+                                       <p className="text-sm text-gray-600">Tài xế: {r.driverName} ({r.driverPhone})</p>
+                                       <p className="text-sm text-gray-500">Thời gian: {new Date(r.departureTime).toLocaleString('vi-VN')}</p>
+                                       <p className="text-sm text-gray-500 mt-2">Giá: {r.price.toLocaleString('vi-VN')}đ • Ghế: {r.seatsAvailable}/{r.seatsTotal}</p>
+                                       {r.description && <p className="text-sm text-gray-700 mt-2">{r.description}</p>}
+                                   </div>
+                                   <div className="flex flex-col gap-2 w-full md:w-auto">
+                                       <button type="button" onClick={() => { if(window.confirm('Duyệt chuyến này?')) { approveRide(r.id); } }} className="bg-green-600 text-white px-4 py-2 rounded">Duyệt</button>
+                                       <button type="button" onClick={() => { const reason = window.prompt('Lý do từ chối (tuỳ chọn):',''); if(reason !== null) { rejectRide(r.id, reason); } }} className="bg-red-100 text-red-700 px-4 py-2 rounded">Từ chối</button>
+                                   </div>
+                               </div>
+                           ))}
+                       </div>
+                   )}
+
+                  {/* Pending Ride Requests (users posting 'looking for ride') */}
+                  <div className="mt-8">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-4">Yêu cầu tìm chuyến chờ duyệt ({(rideRequests || []).filter(rr => rr.status === 'PENDING').length})</h3>
+                      {(rideRequests || []).filter(rr => rr.status === 'PENDING').length === 0 ? (
+                          <div className="bg-white rounded-lg p-6 text-center text-gray-500 shadow-sm">Không có yêu cầu tìm chuyến chờ duyệt.</div>
+                      ) : (
+                          <div className="grid gap-4">
+                              {(rideRequests || []).filter(rr => rr.status === 'PENDING').map(rr => (
+                                  <div key={rr.id} className="bg-white rounded-lg shadow p-4 flex flex-col md:flex-row justify-between items-start gap-4">
+                                      <div className="flex-1">
+                                          <p className="text-md font-bold">{rr.origin} → {rr.destination}</p>
+                                          <p className="text-sm text-gray-600">Người đăng: {rr.passengerName} ({rr.passengerPhone})</p>
+                                          <p className="text-sm text-gray-500">Thời gian: {new Date(rr.pickupTime).toLocaleString('vi-VN')}</p>
+                                          <p className="text-sm text-gray-500 mt-1">Giá đề nghị: {rr.priceOffered.toLocaleString('vi-VN')}đ • Ghế cần: {rr.seatsNeeded || 1}</p>
+                                          {rr.note && <p className="text-sm text-gray-700 mt-2">{rr.note}</p>}
+                                      </div>
+                                      <div className="flex flex-col gap-2 w-full md:w-auto">
+                                          <button type="button" onClick={() => { if(window.confirm('Duyệt yêu cầu này?')) { approveRideRequest(rr.id); } }} className="bg-green-600 text-white px-4 py-2 rounded">Duyệt</button>
+                                          <button type="button" onClick={() => { const reason = window.prompt('Lý do từ chối (tuỳ chọn):',''); if(reason !== null) { rejectRideRequest(rr.id, reason); } }} className="bg-red-100 text-red-700 px-4 py-2 rounded">Từ chối</button>
+                                      </div>
+                                  </div>
+                              ))}
+                          </div>
+                      )}
+                  </div>
                </div>
            )}
 
@@ -418,6 +501,13 @@ export const AdminDashboard: React.FC = () => {
                                            ) : (
                                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Khách hàng</span>
                                            )}
+          
+                                          {/* NOTE: permitted-drivers UI moved to its own top-level tab block (not nested inside users table). */}
+
+                                          {/* NOTE: rides tab was previously (incorrectly) nested inside the users table row.
+                                              It has been removed from here and is rendered as its own top-level tab block below. */}
+
+                                          
                                        </td>
                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
                                            {user.walletBalance.toLocaleString('vi-VN')}đ
@@ -461,6 +551,71 @@ export const AdminDashboard: React.FC = () => {
                    </div>
                </div>
            )}
+          
+          {/* TAB X: PERMITTED DRIVERS (TOP-LEVEL) */}
+          {activeTab === 'permitted' && (
+              <div>
+                  <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-bold text-gray-800">Tài xế được cấp quyền</h2>
+                      <div className="flex items-center gap-3">
+                          <div className="relative">
+                              <Search className="absolute top-2.5 left-3 h-5 w-5 text-gray-400" />
+                              <input 
+                                type="text" 
+                                placeholder="Tìm theo tên hoặc SĐT..." 
+                                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                                value={permittedSearch}
+                                onChange={(e) => setPermittedSearch(e.target.value)}
+                              />
+                          </div>
+                          <button type="button" className="bg-red-100 text-red-700 px-4 py-2 rounded-md" onClick={() => {
+                              if (selectedPermittedDrivers.length === 0) { alert('Vui lòng chọn ít nhất một tài xế để thu hồi quyền.'); return; }
+                              if (!window.confirm(`Xác nhận thu hồi quyền cho ${selectedPermittedDrivers.length} tài xế đã chọn?`)) return;
+                              selectedPermittedDrivers.forEach(id => revokeDriverPermission(id));
+                              setSelectedPermittedDrivers([]);
+                          }}>Thu hồi quyền (chọn nhiều)</button>
+                      </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg shadow overflow-hidden">
+                      <div className="p-4 border-b">
+                          <label className="inline-flex items-center gap-2">
+                              <input type="checkbox" className="h-4 w-4" onChange={(e) => {
+                                  if (e.target.checked) {
+                                      const ids = allUsers.filter(u => u.isDriver).map(u => u.id);
+                                      setSelectedPermittedDrivers(ids);
+                                  } else {
+                                      setSelectedPermittedDrivers([]);
+                                  }
+                              }} />
+                              <span className="text-sm text-gray-600">Chọn tất cả tài xế được cấp quyền</span>
+                          </label>
+                      </div>
+                      <ul className="divide-y divide-gray-200">
+                          {(allUsers.filter(u => u.isDriver).filter(u => {
+                              if (!permittedSearch) return true;
+                              const q = permittedSearch.toLowerCase();
+                              return (u.name || '').toLowerCase().includes(q) || (u.phone || '').includes(q) || (u.email || '').toLowerCase().includes(q);
+                          })).map(driver => (
+                              <li key={driver.id} className="p-4 flex items-center justify-between">
+                                  <div className="flex items-center gap-4">
+                                      <input type="checkbox" checked={selectedPermittedDrivers.includes(driver.id)} onChange={() => {
+                                          setSelectedPermittedDrivers(prev => prev.includes(driver.id) ? prev.filter(x => x !== driver.id) : [...prev, driver.id]);
+                                      }} className="h-4 w-4" />
+                                      <div>
+                                          <div className="font-medium text-gray-900">{driver.name || 'Chưa đặt tên'}</div>
+                                          <div className="text-sm text-gray-500">{driver.phone} {driver.email ? `• ${driver.email}` : ''}</div>
+                                      </div>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                      <button type="button" onClick={() => { if(window.confirm('Thu hồi quyền tài xế này?')) { revokeDriverPermission(driver.id); } }} className="text-red-600 hover:text-red-900">Thu hồi</button>
+                                  </div>
+                              </li>
+                          ))}
+                      </ul>
+                  </div>
+              </div>
+          )}
            
            {/* TAB 4: SYSTEM SETTINGS */}
            {activeTab === 'system' && (
@@ -519,6 +674,10 @@ export const AdminDashboard: React.FC = () => {
                                          required
                                        />
                                    </div>
+                                  <div className="md:col-span-2 flex items-center gap-3">
+                                      <input id="requireRideApproval" type="checkbox" className="h-4 w-4" checked={!!settingsForm.requireRideApproval} onChange={(e) => setSettingsForm({...settingsForm, requireRideApproval: e.target.checked})} />
+                                      <label htmlFor="requireRideApproval" className="text-sm text-gray-700">Bật tính năng duyệt chuyến bởi Admin (chuyến do tài xế tạo sẽ chờ duyệt)</label>
+                                  </div>
                                </div>
 
                                <div className="flex justify-end">

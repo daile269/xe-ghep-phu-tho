@@ -1,9 +1,11 @@
 
 
 export enum RideStatus {
+  PENDING = 'PENDING',
   OPEN = 'OPEN',
   FULL = 'FULL',
   COMPLETED = 'COMPLETED',
+  REJECTED = 'REJECTED',
   CANCELLED = 'CANCELLED'
 }
 
@@ -45,6 +47,8 @@ export interface SystemSettings {
   bankName: string;      // Tên hiển thị (VD: Vietcombank)
   accountNumber: string; // Số tài khoản
   accountOwner: string;  // Tên chủ tài khoản
+  // Nếu true thì mỗi chuyến do tài xế tạo sẽ cần admin duyệt trước khi public
+  requireRideApproval?: boolean;
 }
 
 export interface Transaction {
@@ -128,7 +132,8 @@ export interface RideRequest {
   rideType: RideType;
   seatsNeeded?: number;
   note?: string;
-  status: 'PENDING' | 'ACCEPTED' | 'CANCELLED' | 'COMPLETED';
+  // Added APPROVED/REJECTED so admin can approve or reject user-posted requests
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ACCEPTED' | 'CANCELLED' | 'COMPLETED';
   createdAt: string;
   
   // Thông tin tài xế nhận chuyến

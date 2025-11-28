@@ -29,7 +29,7 @@ interface AppContextType {
   refreshUserData: () => void;
   
   // Driver / User Functions
-  registerDriver: (carModel: string, licensePlate: string, licenseNumber: string) => void;
+    registerDriver: (carModel: string, licensePlate: string, licenseNumber: string, email?: string) => void;
   createRide: (ride: Omit<Ride, 'id' | 'driverId' | 'status' | 'seatsAvailable' | 'driverName' | 'driverAvatar' | 'driverPhone'>) => void;
   createRideRequest: (request: Omit<RideRequest, 'id' | 'passengerId' | 'status' | 'createdAt'> & { passengerId?: string }) => void;
   searchRides: (criteria: SearchCriteria) => Ride[];
@@ -47,6 +47,12 @@ interface AppContextType {
   // Admin Functions
   approveDriver: (userId: string) => void;
   rejectDriver: (userId: string) => void;
+    grantDriverPermission: (userId: string) => void;
+    revokeDriverPermission: (userId: string) => void;
+    approveRide: (rideId: string) => void;
+    rejectRide: (rideId: string, reason?: string) => void;
+    approveRideRequest: (requestId: string) => void;
+    rejectRideRequest: (requestId: string, reason?: string) => void;
   blockUser: (userId: string, isBlocked: boolean) => void;
   adminUpdateWallet: (userId: string, amount: number, description: string) => void;
   approveTransaction: (transactionId: string, bankRefCode?: string) => void;
@@ -65,6 +71,12 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
     accountNumber: '0123456789',
     accountOwner: 'NGUYEN VAN ADMIN'
 };
+// Default: không yêu cầu admin duyệt chuyến
+const DEFAULT_SYSTEM_SETTINGS_WITH_FLAG: SystemSettings = {
+    ...DEFAULT_SYSTEM_SETTINGS,
+    requireRideApproval: false
+};
+
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   // --- STATE ---
@@ -74,7 +86,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [rideRequests, setRideRequests] = useState<RideRequest[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SYSTEM_SETTINGS);
+    const [systemSettings, setSystemSettings] = useState<SystemSettings>(DEFAULT_SYSTEM_SETTINGS_WITH_FLAG);
   
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
       return localStorage.getItem(STORAGE_KEY_CURRENT_USER_ID);
@@ -186,7 +198,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 const newAdmin: User = { 
                     id: 'admin', 
                     name: 'Super Admin', 
-                    email: 'admin@system.com', 
+                    email: 'daile2692003@gmail.com', 
                     phone: '0999999999', 
                     avatar: 'https://ui-avatars.com/api/?name=Admin&background=000&color=fff', 
                     isDriver: false, 
@@ -248,14 +260,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     update(ref(db, `users/${currentUser.id}`), { name, phone });
   };
 
-  const registerDriver = (carModel: string, licensePlate: string, licenseNumber: string) => {
+  const registerDriver = (carModel: string, licensePlate: string, licenseNumber: string, email?: string) => {
       if (!currentUser) return;
-      update(ref(db, `users/${currentUser.id}`), {
+      const updates: any = {
           driverStatus: DriverStatus.PENDING,
           carModel,
           licensePlate,
           licenseNumber
-      });
+      };
+      if (email) updates.email = email;
+      update(ref(db, `users/${currentUser.id}`), updates);
   };
 
   const approveDriver = (userId: string) => {
@@ -264,6 +278,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const rejectDriver = (userId: string) => {
       update(ref(db, `users/${userId}`), { driverStatus: DriverStatus.REJECTED });
+  };
+
+  // Grant platform driving permission to a user (mark as driver + approved)
+  const grantDriverPermission = (userId: string) => {
+      update(ref(db, `users/${userId}`), { isDriver: true, driverStatus: DriverStatus.APPROVED });
+  };
+
+  // Revoke platform driving permission from a user
+  const revokeDriverPermission = (userId: string) => {
+      update(ref(db, `users/${userId}`), { isDriver: false, driverStatus: DriverStatus.NONE });
   };
 
   const blockUser = (userId: string, isBlocked: boolean) => {
@@ -377,10 +401,78 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       driverPhone: currentUser.phone,
       driverAvatar: currentUser.avatar,
       seatsAvailable: rideData.seatsTotal,
-      status: RideStatus.OPEN
+            // Nếu hệ thống yêu cầu duyệt chuyến, đặt trạng thái PENDING, ngược lại mở ngay
+            status: (systemSettings?.requireRideApproval) ? (RideStatus.PENDING as Ride['status']) : RideStatus.OPEN
     };
     set(ref(db, `rides/${newRideId}`), newRide);
+
+        // Try to notify admin via serverless email endpoint (if available)
+        (async () => {
+            try {
+                const endpoint = process.env.REACT_APP_EMAIL_ENDPOINT || '/api/send-email';
+                await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'ride_created',
+                        payload: {
+                            rideId: newRide.id,
+                            origin: newRide.origin,
+                            destination: newRide.destination,
+                            driverName: newRide.driverName,
+                            driverPhone: newRide.driverPhone,
+                            departureTime: newRide.departureTime,
+                            price: newRide.price
+                        }
+                    })
+                });
+            } catch (err) {
+                console.warn('Failed to call email endpoint for ride creation', err);
+            }
+        })();
   };
+
+    // Admin: duyệt / từ chối chuyến
+    const approveRide = (rideId: string) => {
+                        update(ref(db, `rides/${rideId}`), { status: RideStatus.OPEN });
+
+                        // Notify driver via serverless email endpoint (if driver has email)
+                        (async () => {
+                            try {
+                                const ride = rides.find(r => r.id === rideId);
+                                const driverId = ride?.driverId;
+                                const driver = driverId ? allUsers.find(u => u.id === driverId) : null;
+                                const driverEmail = driver?.email;
+                                if (!driverEmail) return;
+
+                                const endpoint = process.env.REACT_APP_EMAIL_ENDPOINT || '/api/send-email';
+                                await fetch(endpoint, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        type: 'ride_approved',
+                                        payload: {
+                                            rideId,
+                                            origin: ride?.origin,
+                                            destination: ride?.destination,
+                                            driverId,
+                                            driverEmail,
+                                            departureTime: ride?.departureTime,
+                                            price: ride?.price
+                                        }
+                                    })
+                                });
+                            } catch (err) {
+                                console.warn('Failed to call email endpoint for ride approval', err);
+                            }
+                        })();
+    };
+
+    const rejectRide = (rideId: string, reason?: string) => {
+            const updates: any = { status: RideStatus.REJECTED };
+            if (reason) updates['rejectionReason'] = reason;
+            update(ref(db, `rides/${rideId}`), updates);
+    };
 
   const createRideRequest = (requestData: Omit<RideRequest, 'id' | 'passengerId' | 'status' | 'createdAt'> & { passengerId?: string }) => {
     if (!currentUser) return;
@@ -389,11 +481,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ...requestData,
       id: newReqId,
       passengerId: requestData.passengerId || currentUser.id,
-      status: 'PENDING',
+            // If system requires admin approval for new posts, mark as PENDING. Otherwise make it immediately OPEN/visible.
+            // If system requires admin approval for new posts, mark as PENDING. Otherwise mark as APPROVED (visible).
+            status: (systemSettings?.requireRideApproval) ? 'PENDING' : 'APPROVED',
       createdAt: new Date().toISOString()
     };
     set(ref(db, `rideRequests/${newReqId}`), newRequest);
   };
+
+    // Admin: approve / reject ride request posts
+    const approveRideRequest = (requestId: string) => {
+            update(ref(db, `rideRequests/${requestId}`), { status: 'OPEN' });
+    };
+
+    const rejectRideRequest = (requestId: string, reason?: string) => {
+            const updates: any = { status: 'REJECTED' };
+            if (reason) updates['rejectionReason'] = reason;
+            update(ref(db, `rideRequests/${requestId}`), updates);
+    };
 
   const cancelRideRequest = (requestId: string) => {
     update(ref(db, `rideRequests/${requestId}`), { status: 'CANCELLED' });
@@ -560,6 +665,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       registerDriver,
       approveDriver,
       rejectDriver,
+        grantDriverPermission,
+        revokeDriverPermission,
+    approveRide,
+        rejectRide,
+        approveRideRequest,
+        rejectRideRequest,
       blockUser,
       adminUpdateWallet,
       approveTransaction,
