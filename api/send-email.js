@@ -40,14 +40,16 @@ export default async function handler(req, res) {
       const subject = `New ride posted: ${origin || ''} → ${destination || ''}`;
       const text = `Ride ID: ${rideId}\nDriver: ${driverName || 'Unknown'}\nPhone: ${driverPhone || ''}\nDeparture: ${departureTime || ''}\nPrice: ${price || ''}`;
 
-      await transporter.sendMail({
+      console.log('Sending admin notification', { to: ADMIN_EMAIL, subject });
+      const info = await transporter.sendMail({
         from: FROM_EMAIL,
         to: ADMIN_EMAIL,
         subject,
         text
       });
+      console.log('sendMail result', info);
 
-      return res.status(200).json({ ok: true, message: 'Admin notified' });
+      return res.status(200).json({ ok: true, message: 'Admin notified', info });
     }
 
     if (type === 'ride_approved') {
@@ -57,14 +59,16 @@ export default async function handler(req, res) {
       const subject = `Chuyến của bạn đã được duyệt — ${origin || ''} → ${destination || ''}`;
       const text = `Chuyến (ID: ${rideId}) của bạn đã được quản trị viên duyệt.\nLộ trình: ${origin} → ${destination}\nThời gian: ${departureTime || ''}\nGiá: ${price || ''}`;
 
-      await transporter.sendMail({
+      console.log('Sending email to driver', { to: driverEmail, subject });
+      const info = await transporter.sendMail({
         from: FROM_EMAIL,
         to: driverEmail,
         subject,
         text
       });
+      console.log('sendMail result', info);
 
-      return res.status(200).json({ ok: true, message: 'Driver notified' });
+      return res.status(200).json({ ok: true, message: 'Driver notified', info });
     }
 
     return res.status(400).json({ error: 'Unknown type' });
