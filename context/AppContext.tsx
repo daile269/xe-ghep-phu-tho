@@ -443,10 +443,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                                 const driverId = ride?.driverId;
                                 const driver = driverId ? allUsers.find(u => u.id === driverId) : null;
                                 const driverEmail = driver?.email;
-                                if (!driverEmail) return;
+                                if (!driverEmail) {
+                                    console.log('approveRide: driver has no email, skipping notification', { rideId, driverId });
+                                    return;
+                                }
 
                                 const endpoint = process.env.REACT_APP_EMAIL_ENDPOINT || '/api/send-email';
-                                await fetch(endpoint, {
+                                console.log('approveRide: calling email endpoint', { endpoint, rideId, driverEmail });
+
+                                const resp = await fetch(endpoint, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
@@ -462,6 +467,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                                         }
                                     })
                                 });
+
+                                let data: any = null;
+                                try { data = await resp.json(); } catch (e) { data = await resp.text(); }
+                                console.log('approveRide: email endpoint response', { status: resp.status, data });
                             } catch (err) {
                                 console.warn('Failed to call email endpoint for ride approval', err);
                             }
