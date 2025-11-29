@@ -386,6 +386,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     if (email) updates.email = email;
     if (password) updates.driverPassword = password;
     update(ref(db, `users/${currentUser.id}`), updates);
+
+    // Notify admin that a new driver registration needs approval
+    (async () => {
+      try {
+        const endpoint = EMAIL_ENDPOINT;
+        const payload = {
+          type: 'driver_registered',
+          payload: {
+            userId: currentUser.id,
+            name: currentUser.name,
+            phone: currentUser.phone,
+            email: email || currentUser.email || '',
+            carModel,
+            licensePlate,
+            licenseNumber,
+            createdAt: new Date().toISOString(),
+          },
+        };
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        let data: any = null;
+        try { data = await resp.json(); } catch (e) { data = await resp.text(); }
+        try {
+          set(ref(db, `debug/emailLogs/${Date.now()}_driver_registered_${currentUser.id}`), {
+            event: 'driver_registered_email',
+            userId: currentUser.id,
+            status: resp.status,
+            data,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (e) {
+          // ignore
+        }
+      } catch (err) {
+        console.warn('registerDriver: failed to notify admin', err);
+      }
+    })();
   };
 
   const approveDriver = (userId: string) => {
@@ -833,6 +873,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       platformFeePercent: systemSettings?.defaultPlatformFeePercent || 0,
     };
     set(ref(db, `rideRequests/${newReqId}`), newRequest);
+
+    // Notify admin that a new ride request was created and may need approval
+    (async () => {
+      try {
+        const endpoint = EMAIL_ENDPOINT;
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'ride_request_created',
+            payload: {
+              requestId: newReqId,
+              passengerId: newRequest.passengerId,
+              passengerName: newRequest.passengerName,
+              passengerPhone: newRequest.passengerPhone,
+              origin: newRequest.origin,
+              destination: newRequest.destination,
+              pickupTime: newRequest.pickupTime,
+              priceOffered: newRequest.priceOffered,
+              status: newRequest.status,
+              createdAt: newRequest.createdAt,
+            },
+          }),
+        });
+        let data: any = null;
+        try { data = await resp.json(); } catch (e) { data = await resp.text(); }
+        try {
+          set(ref(db, `debug/emailLogs/${Date.now()}_rideRequest_${newReqId}`), {
+            event: 'ride_request_created_email',
+            requestId: newReqId,
+            status: resp.status,
+            data,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (e) {
+          // ignore
+        }
+      } catch (err) {
+        console.warn('createRideRequest: failed to notify admin', err);
+      }
+    })();
   };
 
   // Admin: approve / reject ride request posts
