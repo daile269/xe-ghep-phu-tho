@@ -8,7 +8,7 @@ export const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login } = useApp();
+  const { login, allUsers } = useApp();
   const navigate = useNavigate();
 
   const handleLogin = (e: React.FormEvent) => {
@@ -34,10 +34,18 @@ export const Login: React.FC = () => {
         return;
     }
 
-    if (login(username)) {
+    // If this phone corresponds to a driver account, require password (UI shows field)
+    const matchedUser = allUsers.find((u) => u.phone === cleanPhone);
+
+    const success = login(username, password);
+    if (success) {
       navigate('/');
     } else {
+      if (matchedUser && matchedUser.isDriver) {
+        setError('Mật khẩu tài xế không chính xác hoặc chưa nhập.');
+      } else {
         setError('Có lỗi xảy ra hoặc tài khoản bị khóa.');
+      }
     }
   };
 
@@ -89,11 +97,11 @@ export const Login: React.FC = () => {
               </div>
             </div>
 
-            {/* Admin Password Field - Only shows if username is 'admin' */}
-            {username === 'admin' && (
+            {/* Admin / Driver Password Field - shows for admin or when the phone belongs to a driver */}
+            { (username === 'admin' || (!!allUsers && allUsers.find(u => u.phone === username.replace(/\s/g, ''))?.isDriver)) && (
                 <div className="animate-fade-in-down">
                   <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                    Mật khẩu quản trị
+                    Mật khẩu
                   </label>
                   <div className="mt-1 relative rounded-md shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

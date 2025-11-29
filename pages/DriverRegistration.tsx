@@ -12,7 +12,8 @@ export const DriverRegistration: React.FC = () => {
     carModel: '',
     licensePlate: '',
     licenseNumber: '',
-    email: ''
+    email: '',
+    password: ''
   });
 
   useEffect(() => {
@@ -30,7 +31,7 @@ export const DriverRegistration: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.carModel && formData.licensePlate && formData.licenseNumber && formData.email) {
-        registerDriver(formData.carModel, formData.licensePlate, formData.licenseNumber, formData.email);
+      registerDriver(formData.carModel, formData.licensePlate, formData.licenseNumber, formData.email, formData.password);
     }
   };
 
@@ -202,6 +203,22 @@ export const DriverRegistration: React.FC = () => {
                  value={formData.email}
                  onChange={handleChange}
                 />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu tài xế</label>
+              <div className="relative">
+                <input
+                  type="password"
+                  name="password"
+                  required
+                  placeholder="Mật khẩu đăng nhập cho tài xế"
+                  className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border"
+                  value={formData.password}
+                  onChange={handleChange}
+                />
+                <p className="text-xs text-gray-400 mt-1">Mật khẩu này sẽ được sử dụng khi tài xế đăng nhập.</p>
               </div>
             </div>
            </div>

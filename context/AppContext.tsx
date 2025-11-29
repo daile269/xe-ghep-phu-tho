@@ -51,7 +51,8 @@ interface AppContextType {
     carModel: string,
     licensePlate: string,
     licenseNumber: string,
-    email?: string
+    email?: string,
+    password?: string
   ) => void;
   createRide: (
     ride: Omit<
@@ -311,6 +312,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     // Normal User Logic
     const existingUser = allUsers.find((u) => u.phone === phoneOrUsername);
     if (existingUser) {
+      // If this is a driver account, require the driver password as an extra check
+      if (existingUser.isDriver) {
+        if (!password) {
+          alert("Tài khoản tài xế yêu cầu mật khẩu. Vui lòng nhập mật khẩu.");
+          return false;
+        }
+        if (existingUser.driverPassword !== password) {
+          alert("Mật khẩu tài xế không chính xác.");
+          return false;
+        }
+      }
       if (existingUser.isAdmin) {
         alert(
           "Vui lòng đăng nhập bằng tài khoản quản trị viên (username: admin) và mật khẩu."
@@ -359,7 +371,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     carModel: string,
     licensePlate: string,
     licenseNumber: string,
-    email?: string
+    email?: string,
+    password?: string
   ) => {
     if (!currentUser) return;
     const updates: any = {
@@ -369,6 +382,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
       licenseNumber,
     };
     if (email) updates.email = email;
+    if (password) updates.driverPassword = password;
     update(ref(db, `users/${currentUser.id}`), updates);
   };
 

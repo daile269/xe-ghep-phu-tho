@@ -95,6 +95,8 @@ export interface User {
   
   // Wallet
   walletBalance: number;
+  // Driver password (optional) required for driver login — stored as plain text for now
+  driverPassword?: string;
   // Optional geolocation for drivers (or users who share location). Stored under users/{id}/location
   location?: {
     lat: number;
