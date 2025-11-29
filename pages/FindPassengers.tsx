@@ -28,9 +28,10 @@ export const FindPassengers: React.FC = () => {
   
   const [acceptedPassenger, setAcceptedPassenger] = useState<RideRequest | null>(null);
 
-  const pendingRequests = rideRequests.filter(r => r.status === 'PENDING');
+    // Only show requests that have been approved by Admin
+    const approvedRequests = rideRequests.filter(r => r.status === 'APPROVED');
 
-  const filteredRequests = pendingRequests.filter(req => {
+    const filteredRequests = approvedRequests.filter(req => {
       const matchOrigin = !filterOrigin || req.origin.toLowerCase().includes(filterOrigin.toLowerCase());
       const matchDestination = !filterDestination || req.destination.toLowerCase().includes(filterDestination.toLowerCase());
       return matchOrigin && matchDestination;

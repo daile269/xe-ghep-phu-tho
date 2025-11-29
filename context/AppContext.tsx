@@ -133,7 +133,9 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
 // Default: không yêu cầu admin duyệt chuyến
 const DEFAULT_SYSTEM_SETTINGS_WITH_FLAG: SystemSettings = {
   ...DEFAULT_SYSTEM_SETTINGS,
-  requireRideApproval: false,
+  // By default, require admin approval for ride requests so they don't appear
+  // publicly until an admin explicitly approves them.
+  requireRideApproval: true,
   defaultPlatformFeePercent: 0,
 };
 
@@ -836,7 +838,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   // Admin: approve / reject ride request posts
   const approveRideRequest = (requestId: string) => {
     console.log('approveRideRequest called', { requestId });
-    update(ref(db, `rideRequests/${requestId}`), { status: "OPEN" })
+    update(ref(db, `rideRequests/${requestId}`), { status: "APPROVED" })
       .then(() => console.log('approveRideRequest: DB update succeeded', { requestId }))
       .catch((err) => console.error('approveRideRequest: DB update failed', err));
 
