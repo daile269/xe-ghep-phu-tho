@@ -50,15 +50,7 @@ export const FindPassengers: React.FC = () => {
       const totalFees = platformFee + referralFee;
       const driverWallet = currentUser.walletBalance || 0;
 
-      console.log('Wallet check:', {
-          driverWallet,
-          feePercent,
-          platformFee,
-          referralFee,
-          totalFees,
-          priceOffered: request.priceOffered,
-          canAccept: driverWallet >= totalFees
-      });
+      
 
       // Check if driver has enough balance to cover fees
       // IMPORTANT: totalFees must be > 0, otherwise always allow (free rides)

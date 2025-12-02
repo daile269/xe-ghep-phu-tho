@@ -809,11 +809,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         }
 
         const endpoint = EMAIL_ENDPOINT;
-        console.log("approveRide: calling email endpoint", {
-          endpoint,
-          rideId,
-          driverEmail,
-        });
+        
 
         const resp = await fetch(endpoint, {
           method: "POST",
@@ -838,10 +834,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
         } catch (e) {
           data = await resp.text();
         }
-        console.log("approveRide: email endpoint response", {
-          status: resp.status,
-          data,
-        });
+        
       } catch (err) {
         console.warn("Failed to call email endpoint for ride approval", err);
       }
@@ -1027,7 +1020,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
                 pickupTime: req.pickupTime,
                 price: req.priceOffered,
               });
-              console.log('approveRideRequest: notifyNearbyDrivers results', { requestId, notifyRes });
+              
               try {
                 set(ref(db, `debug/emailLogs/${Date.now()}_${requestId}`), {
                   event: 'approveRideRequest_notifyNearby_results',
@@ -1055,11 +1048,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
               (u) => u.isDriver && u.driverStatus === DriverStatus.APPROVED && u.email && (u.canReceiveEmails !== false)
             );
             if (!drivers || drivers.length === 0) {
-              console.log('approveRideRequest: no approved drivers with email found, skipping broadcast', { requestId });
+              
               return;
             }
 
-            console.log('approveRideRequest: broadcasting to drivers (fallback)', { count: drivers.length, requestId });
+            
 
             const promises = drivers.map((d) =>
               fetch(endpoint, {
@@ -1089,7 +1082,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
             );
 
             const results = await Promise.all(promises);
-            console.log('approveRideRequest: broadcast results (fallback)', { requestId, results });
+            
             try {
               set(ref(db, `debug/emailLogs/${Date.now()}_${requestId}`), {
                 event: 'approveRideRequest_broadcast_results',
