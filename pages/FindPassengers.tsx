@@ -42,6 +42,27 @@ export const FindPassengers: React.FC = () => {
           navigate('/login');
           return;
       }
+
+      // Calculate total fees
+      const feePercent = systemSettings?.defaultPlatformFeePercent || 0;
+      const platformFee = request.priceOffered * feePercent;
+      const referralFee = request.referralFee || 0;
+      const totalFees = platformFee + referralFee;
+      const driverWallet = currentUser.walletBalance || 0;
+
+      // Check if driver has enough balance to cover fees
+      if (driverWallet < totalFees) {
+          alert(`❌ Số dư ví không đủ để nhận chuyến này!\n\n` +
+                `Phí cần trả:\n` +
+                `- Phí sàn (${(feePercent * 100).toFixed(2)}%): ${platformFee.toLocaleString('vi-VN')}đ\n` +
+                `- Hoa hồng: ${referralFee.toLocaleString('vi-VN')}đ\n` +
+                `Tổng phí: ${totalFees.toLocaleString('vi-VN')}đ\n\n` +
+                `Số dư ví hiện tại: ${driverWallet.toLocaleString('vi-VN')}đ\n` +
+                `Cần nạp thêm: ${(totalFees - driverWallet).toLocaleString('vi-VN')}đ\n\n` +
+                `Vui lòng nạp tiền vào ví trước khi nhận chuyến.`);
+          return;
+      }
+
       acceptRideRequest(request.id);
       setAcceptedPassenger(request);
   };
