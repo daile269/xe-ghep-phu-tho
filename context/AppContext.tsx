@@ -894,6 +894,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
               priceOffered: newRequest.priceOffered,
               status: newRequest.status,
               createdAt: newRequest.createdAt,
+              // Thông tin bắn khách (nếu có)
+              referrerId: newRequest.referrerId,
+              referralFee: newRequest.referralFee,
+              rideType: newRequest.rideType,
+              seatsNeeded: newRequest.seatsNeeded,
             },
           }),
         });

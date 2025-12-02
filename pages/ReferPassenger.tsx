@@ -58,6 +58,7 @@ export const ReferPassenger: React.FC = () => {
       referralFee: Number(formData.referralFee)
     });
 
+    alert('Đã gửi yêu cầu bắn khách! Admin sẽ duyệt và yêu cầu sẽ hiển thị cho tài xế khác.');
     navigate('/dashboard'); 
   };
 
