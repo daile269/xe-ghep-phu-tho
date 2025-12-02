@@ -17,8 +17,8 @@ export const FindPassengers: React.FC = () => {
        navigate('/login');
        return;
     }
-    // Auth Guard
-    if (currentUser.driverStatus !== DriverStatus.APPROVED) {
+    // Auth Guard - Only approved drivers can access this page (not even admin)
+    if (currentUser.driverStatus !== DriverStatus.APPROVED || currentUser.isAdmin) {
         navigate('/driver-register');
     }
   }, [currentUser, navigate]);
@@ -50,8 +50,19 @@ export const FindPassengers: React.FC = () => {
       const totalFees = platformFee + referralFee;
       const driverWallet = currentUser.walletBalance || 0;
 
+      console.log('Wallet check:', {
+          driverWallet,
+          feePercent,
+          platformFee,
+          referralFee,
+          totalFees,
+          priceOffered: request.priceOffered,
+          canAccept: driverWallet >= totalFees
+      });
+
       // Check if driver has enough balance to cover fees
-      if (driverWallet < totalFees) {
+      // IMPORTANT: totalFees must be > 0, otherwise always allow (free rides)
+      if (totalFees > 0 && driverWallet < totalFees) {
           alert(`❌ Số dư ví không đủ để nhận chuyến này!\n\n` +
                 `Phí cần trả:\n` +
                 `- Phí sàn (${(feePercent * 100).toFixed(2)}%): ${platformFee.toLocaleString('vi-VN')}đ\n` +
@@ -90,7 +101,7 @@ export const FindPassengers: React.FC = () => {
       }
   };
 
-  if (!currentUser || currentUser.driverStatus !== DriverStatus.APPROVED) return null;
+  if (!currentUser || currentUser.driverStatus !== DriverStatus.APPROVED || currentUser.isAdmin) return null;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative">
