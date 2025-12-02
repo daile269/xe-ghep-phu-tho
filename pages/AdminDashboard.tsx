@@ -185,7 +185,7 @@ export const AdminDashboard: React.FC = () => {
                                         onClick={() => setActiveTab('rides')}
                                         className={`px-3 py-2 rounded-md font-medium text-sm md:text-base ${activeTab === 'rides' ? 'bg-slate-700 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`}
                                     >
-                                            Duyệt Chuyến ({(rides || []).filter(r => r.status === RideStatus.PENDING).length})
+                                            Duyệt Chuyến ({(rides || []).filter(r => r.status === RideStatus.PENDING).length + (rideRequests || []).filter(r => r.status === 'PENDING').length})
                                     </button>
                                        <button 
                                         type="button"
