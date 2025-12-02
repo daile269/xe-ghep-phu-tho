@@ -149,6 +149,7 @@ export const AdminDashboard: React.FC = () => {
 
   const handleUpdateSettings = (e: React.FormEvent) => {
       e.preventDefault();
+      console.log('Saving settings:', settingsForm);
       updateSystemSettings(settingsForm);
       alert('Đã lưu cấu hình hệ thống thành công!');
   };

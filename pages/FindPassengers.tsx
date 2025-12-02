@@ -9,7 +9,7 @@ import { vi } from 'date-fns/locale';
 import { RideType, RideRequest, DriverStatus } from '../types';
 
 export const FindPassengers: React.FC = () => {
-  const { rideRequests, currentUser, acceptRideRequest } = useApp();
+  const { rideRequests, currentUser, acceptRideRequest, systemSettings } = useApp();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -125,7 +125,9 @@ export const FindPassengers: React.FC = () => {
           <h1 className="text-2xl font-bold flex items-center">
              <User className="mr-3" /> Tìm khách & Nhận chuyến
           </h1>
-          <p className="mt-2 text-green-100">Lưu ý: Bạn sẽ bị trừ phí sàn (1%) và hoa hồng (nếu có) khi hoàn thành chuyến.</p>
+          <p className="mt-2 text-green-100">
+              Lưu ý: Bạn sẽ bị trừ phí sàn ({((systemSettings?.defaultPlatformFeePercent || 0) * 100).toFixed(2)}%) và hoa hồng (nếu có) khi hoàn thành chuyến.
+          </p>
        </div>
 
        {/* Filter */}
@@ -165,8 +167,9 @@ export const FindPassengers: React.FC = () => {
           ) : (
               <div className="grid gap-6 md:grid-cols-2">
                  {filteredRequests.map(req => {
-                     // Calculate Fee Preview
-                     const platformFee = req.priceOffered * 0.01;
+                     // Calculate Fee Preview - always use system settings (ignore request-specific fee)
+                     const feePercent = systemSettings?.defaultPlatformFeePercent || 0;
+                     const platformFee = req.priceOffered * feePercent;
                      const referralFee = req.referralFee || 0;
                      const totalFee = platformFee + referralFee;
                      const netIncome = req.priceOffered - totalFee;
@@ -209,7 +212,7 @@ export const FindPassengers: React.FC = () => {
                                    <span className="font-bold">{req.priceOffered.toLocaleString('vi-VN')}đ</span>
                                </div>
                                <div className="flex justify-between mb-1 text-red-500">
-                                   <span>- Phí sàn (1%):</span>
+                                   <span>- Phí sàn ({(feePercent * 100).toFixed(2)}%):</span>
                                    <span>{platformFee.toLocaleString('vi-VN')}đ</span>
                                </div>
                                {referralFee > 0 && (
