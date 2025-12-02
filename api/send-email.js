@@ -91,6 +91,72 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, message: 'Driver notified', info });
     }
 
+    if (type === 'driver_registered') {
+      if (!ADMIN_EMAIL) return res.status(500).json({ error: 'ADMIN_EMAIL not configured' });
+
+      const { userId, name, phone, email, carModel, licensePlate, licenseNumber } = payload;
+      const subject = `Tài xế mới đăng ký: ${name || phone}`;
+      const text = `Có tài xế mới cần duyệt:\n\nUser ID: ${userId}\nTên: ${name || 'Chưa cập nhật'}\nSĐT: ${phone}\nEmail: ${email || 'Không có'}\nXe: ${carModel || ''}\nBiển số: ${licensePlate || ''}\nGPLX: ${licenseNumber || ''}\n\nVui lòng vào hệ thống để duyệt.`;
+
+      console.log('Sending driver registration notification to admin', { to: ADMIN_EMAIL, subject });
+      const info = await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: ADMIN_EMAIL,
+        subject,
+        text
+      });
+      console.log('sendMail result', info);
+
+      return res.status(200).json({ ok: true, message: 'Admin notified of driver registration', info });
+    }
+
+    if (type === 'ride_request_created') {
+      if (!ADMIN_EMAIL) return res.status(500).json({ error: 'ADMIN_EMAIL not configured' });
+
+      const { requestId, passengerName, passengerPhone, origin, destination, pickupTime, priceOffered, referrerId, referralFee, rideType, seatsNeeded } = payload;
+      
+      let subject = `Yêu cầu chuyến đi mới: ${origin || ''} → ${destination || ''}`;
+      let text = `Có yêu cầu chuyến đi mới cần duyệt:\n\nID: ${requestId}\nKhách: ${passengerName || 'Chưa có tên'}\nSĐT: ${passengerPhone}\nTừ: ${origin}\nĐến: ${destination}\nGiờ đón: ${pickupTime || ''}\nGiá đề nghị: ${priceOffered || 0} VNĐ\nLoại xe: ${rideType || ''}\nSố ghế: ${seatsNeeded || 1}`;
+
+      // Nếu có thông tin bắn khách
+      if (referrerId && referralFee) {
+        subject = `🎯 BẮN KHÁCH: ${origin || ''} → ${destination || ''}`;
+        text += `\n\n⚠️ ĐÂY LÀ CHUYẾN BẮN KHÁCH\nTài xế bắn: ${referrerId}\nHoa hồng: ${referralFee} VNĐ`;
+      }
+
+      text += `\n\nVui lòng vào hệ thống để duyệt.`;
+
+      console.log('Sending ride request notification to admin', { to: ADMIN_EMAIL, subject });
+      const info = await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: ADMIN_EMAIL,
+        subject,
+        text
+      });
+      console.log('sendMail result', info);
+
+      return res.status(200).json({ ok: true, message: 'Admin notified of ride request', info });
+    }
+
+    if (type === 'ride_nearby') {
+      const { driverId, driverEmail, pickupLat, pickupLng, distanceKm, originalPayload } = payload;
+      if (!driverEmail) return res.status(400).json({ error: 'driverEmail required for ride_nearby' });
+
+      const subject = `🚗 Có khách gần bạn (${distanceKm ? distanceKm.toFixed(1) : '?'}km)`;
+      const text = `Có yêu cầu chuyến đi gần vị trí của bạn!\n\nKhoảng cách: ${distanceKm ? distanceKm.toFixed(1) : '?'} km\nVị trí đón: ${pickupLat}, ${pickupLng}\n\nVui lòng vào app để xem chi tiết và nhận chuyến.`;
+
+      console.log('Sending nearby ride notification to driver', { to: driverEmail, subject, driverId });
+      const info = await transporter.sendMail({
+        from: FROM_EMAIL,
+        to: driverEmail,
+        subject,
+        text
+      });
+      console.log('sendMail result', info);
+
+      return res.status(200).json({ ok: true, message: 'Driver notified of nearby ride', info });
+    }
+
     return res.status(400).json({ error: 'Unknown type' });
   } catch (err) {
     console.error('Error sending email', err);
