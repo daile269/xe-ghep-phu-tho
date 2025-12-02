@@ -66,18 +66,25 @@ export const BookRide: React.FC = () => {
       return;
     }
 
-    createRideRequest({
+    const requestData: any = {
       origin: formData.origin,
       destination: formData.destination,
       pickupTime: formData.pickupTime,
       priceOffered: formData.priceOffered ? Number(formData.priceOffered) : 0,
       rideType: formData.rideType,
-      seatsNeeded: formData.rideType === RideType.DELIVERY ? undefined : formData.seatsNeeded,
       note: formData.note,
       passengerName: currentUser.name || "Khách hàng",
       passengerPhone: currentUser.phone
-    });
+    };
 
+    // Only add seatsNeeded if not DELIVERY type
+    if (formData.rideType !== RideType.DELIVERY) {
+      requestData.seatsNeeded = formData.seatsNeeded;
+    }
+
+    createRideRequest(requestData);
+
+    alert('Đã gửi yêu cầu đặt xe! Admin sẽ duyệt và yêu cầu sẽ hiển thị cho tài xế.');
     navigate('/dashboard'); // Chuyển về trang quản lý để xem yêu cầu vừa tạo
   };
 
