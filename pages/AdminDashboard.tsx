@@ -347,68 +347,91 @@ export const AdminDashboard: React.FC = () => {
            {/* TAB ?: RIDES PENDING APPROVAL (TOP-LEVEL) */}
            {activeTab === 'rides' && (
                <div>
-                   <h2 className="text-xl font-bold text-gray-800 mb-6">Chuyến chờ duyệt ({(rides || []).filter(r => r.status === RideStatus.PENDING).length})</h2>
-                   {(rides || []).filter(r => r.status === RideStatus.PENDING).length === 0 ? (
-                       <div className="bg-white rounded-lg p-8 text-center text-gray-500 shadow-sm">Không có chuyến chờ duyệt.</div>
-                   ) : (
-                       <div className="grid gap-6">
-                           {(rides || []).filter(r => r.status === RideStatus.PENDING).map(r => (
-                               <div key={r.id} className="bg-white rounded-lg shadow p-6 flex flex-col md:flex-row justify-between items-start gap-4">
-                                   <div className="flex-1">
-                                       <p className="text-lg font-bold">{r.origin} → {r.destination}</p>
-                                       <p className="text-sm text-gray-600">Tài xế: {r.driverName} ({r.driverPhone})</p>
-                                       <p className="text-sm text-gray-500">Thời gian: {new Date(r.departureTime).toLocaleString('vi-VN')}</p>
-                                       <p className="text-sm text-gray-500 mt-2">Giá: {r.price.toLocaleString('vi-VN')}đ • Ghế: {r.seatsAvailable}/{r.seatsTotal}</p>
-                                       <p className="text-sm text-gray-500 mt-1">Phí nền tảng: {(r.platformFeePercent || 0) * 100}%</p>
-                                       {r.description && <p className="text-sm text-gray-700 mt-2">{r.description}</p>}
-                                   </div>
-                                   <div className="flex flex-col gap-2 w-full md:w-auto">
-                                       <div className="flex gap-2">
-                                           <button type="button" onClick={() => { if(window.confirm('Duyệt chuyến này?')) { approveRide(r.id); } }} className="bg-green-600 text-white px-4 py-2 rounded">Duyệt</button>
-                                           <button type="button" onClick={() => { const reason = window.prompt('Lý do từ chối (tuỳ chọn):',''); if(reason !== null) { rejectRide(r.id, reason); } }} className="bg-red-100 text-red-700 px-4 py-2 rounded">Từ chối</button>
+                   {/* Section 1: Driver Posted Rides */}
+                   <div className="mb-10">
+                       <h2 className="text-xl font-bold text-gray-800 mb-6">
+                           Chuyến tài xế đăng - Chờ duyệt ({(rides || []).filter(r => r.status === RideStatus.PENDING).length})
+                       </h2>
+                       {(rides || []).filter(r => r.status === RideStatus.PENDING).length === 0 ? (
+                           <div className="bg-white rounded-lg p-8 text-center text-gray-500 shadow-sm">
+                               Không có chuyến tài xế đăng chờ duyệt.
+                           </div>
+                       ) : (
+                           <div className="grid gap-6">
+                               {(rides || []).filter(r => r.status === RideStatus.PENDING).map(r => (
+                                   <div key={r.id} className="bg-white rounded-lg shadow p-6 flex flex-col md:flex-row justify-between items-start gap-4 border-l-4 border-blue-500">
+                                       <div className="flex-1">
+                                           <div className="flex items-center gap-2 mb-2">
+                                               <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-bold rounded">TÀI XẾ ĐĂNG</span>
+                                           </div>
+                                           <p className="text-lg font-bold">{r.origin} → {r.destination}</p>
+                                           <p className="text-sm text-gray-600">Tài xế: {r.driverName} ({r.driverPhone})</p>
+                                           <p className="text-sm text-gray-500">Thời gian: {new Date(r.departureTime).toLocaleString('vi-VN')}</p>
+                                           <p className="text-sm text-gray-500 mt-2">Giá: {r.price.toLocaleString('vi-VN')}đ • Ghế: {r.seatsAvailable}/{r.seatsTotal}</p>
+                                           <p className="text-sm text-gray-500 mt-1">Phí nền tảng: {(r.platformFeePercent || 0) * 100}%</p>
+                                           {r.description && <p className="text-sm text-gray-700 mt-2">{r.description}</p>}
                                        </div>
-                                       <button type="button" onClick={() => {
-                                           const input = window.prompt('Nhập phần trăm phí nền tảng cho chuyến này (VD: 1 cho 1%):', String((r.platformFeePercent || 0) * 100));
-                                           if (input !== null) {
-                                               const v = Number(input);
-                                               if (isNaN(v) || v < 0) { alert('Giá trị không hợp lệ'); return; }
-                                               if (!window.confirm(`Xác nhận cập nhật phí nền tảng thành ${v}% cho chuyến này?`)) return;
-                                               const newVal = v / 100;
-                                               updateRideFee(r.id, newVal);
-                                               alert('Đã cập nhật phí nền tảng');
-                                           }
-                                       }} className="mt-2 bg-blue-600 text-white px-4 py-2 rounded">Sửa phí</button>
+                                       <div className="flex flex-col gap-2 w-full md:w-auto">
+                                           <div className="flex gap-2">
+                                               <button type="button" onClick={() => { if(window.confirm('Duyệt chuyến này?')) { approveRide(r.id); } }} className="bg-green-600 text-white px-4 py-2 rounded">Duyệt</button>
+                                               <button type="button" onClick={() => { const reason = window.prompt('Lý do từ chối (tuỳ chọn):',''); if(reason !== null) { rejectRide(r.id, reason); } }} className="bg-red-100 text-red-700 px-4 py-2 rounded">Từ chối</button>
+                                           </div>
+                                           <button type="button" onClick={() => {
+                                               const input = window.prompt('Nhập phần trăm phí nền tảng cho chuyến này (VD: 1 cho 1%):', String((r.platformFeePercent || 0) * 100));
+                                               if (input !== null) {
+                                                   const v = Number(input);
+                                                   if (isNaN(v) || v < 0) { alert('Giá trị không hợp lệ'); return; }
+                                                   if (!window.confirm(`Xác nhận cập nhật phí nền tảng thành ${v}% cho chuyến này?`)) return;
+                                                   const newVal = v / 100;
+                                                   updateRideFee(r.id, newVal);
+                                                   alert('Đã cập nhật phí nền tảng');
+                                               }
+                                           }} className="mt-2 bg-blue-600 text-white px-4 py-2 rounded">Sửa phí</button>
+                                       </div>
                                    </div>
-                               </div>
-                           ))}
-                       </div>
-                   )}
+                               ))}
+                           </div>
+                       )}
+                   </div>
 
-                  {/* Pending Ride Requests (users posting 'looking for ride') */}
-                  <div className="mt-8">
-                      <h3 className="text-lg font-semibold text-gray-800 mb-4">Yêu cầu tìm chuyến chờ duyệt ({(rideRequests || []).filter(rr => rr.status === 'PENDING').length})</h3>
-                      {(rideRequests || []).filter(rr => rr.status === 'PENDING').length === 0 ? (
-                          <div className="bg-white rounded-lg p-6 text-center text-gray-500 shadow-sm">Không có yêu cầu tìm chuyến chờ duyệt.</div>
-                      ) : (
-                          <div className="grid gap-4">
-                              {(rideRequests || []).filter(rr => rr.status === 'PENDING').map(rr => (
-                                  <div key={rr.id} className="bg-white rounded-lg shadow p-4 flex flex-col md:flex-row justify-between items-start gap-4">
-                                      <div className="flex-1">
-                                          <p className="text-md font-bold">{rr.origin} → {rr.destination}</p>
-                                          <p className="text-sm text-gray-600">Người đăng: {rr.passengerName} ({rr.passengerPhone})</p>
-                                          <p className="text-sm text-gray-500">Thời gian: {new Date(rr.pickupTime).toLocaleString('vi-VN')}</p>
-                                          <p className="text-sm text-gray-500 mt-1">Giá đề nghị: {rr.priceOffered.toLocaleString('vi-VN')}đ • Ghế cần: {rr.seatsNeeded || 1}</p>
-                                          {rr.note && <p className="text-sm text-gray-700 mt-2">{rr.note}</p>}
-                                      </div>
-                                      <div className="flex flex-col gap-2 w-full md:w-auto">
-                                          <button type="button" onClick={() => { if(window.confirm('Duyệt yêu cầu này?')) { approveRideRequest(rr.id); } }} className="bg-green-600 text-white px-4 py-2 rounded">Duyệt</button>
-                                          <button type="button" onClick={() => { const reason = window.prompt('Lý do từ chối (tuỳ chọn):',''); if(reason !== null) { rejectRideRequest(rr.id, reason); } }} className="bg-red-100 text-red-700 px-4 py-2 rounded">Từ chối</button>
-                                      </div>
-                                  </div>
-                              ))}
-                          </div>
-                      )}
-                  </div>
+                   {/* Section 2: Passenger Posted Requests */}
+                   <div>
+                       <h2 className="text-xl font-bold text-gray-800 mb-6">
+                           Yêu cầu khách đặt - Chờ duyệt ({(rideRequests || []).filter(rr => rr.status === 'PENDING').length})
+                       </h2>
+                       {(rideRequests || []).filter(rr => rr.status === 'PENDING').length === 0 ? (
+                           <div className="bg-white rounded-lg p-6 text-center text-gray-500 shadow-sm">
+                               Không có yêu cầu khách đặt chờ duyệt.
+                           </div>
+                       ) : (
+                           <div className="grid gap-4">
+                               {(rideRequests || []).filter(rr => rr.status === 'PENDING').map(rr => (
+                                   <div key={rr.id} className="bg-white rounded-lg shadow p-4 flex flex-col md:flex-row justify-between items-start gap-4 border-l-4 border-green-500">
+                                       <div className="flex-1">
+                                           <div className="flex items-center gap-2 mb-2">
+                                               <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded">KHÁCH ĐẶT</span>
+                                               {rr.referrerId && (
+                                                   <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-bold rounded">BẮN KHÁCH</span>
+                                               )}
+                                           </div>
+                                           <p className="text-md font-bold">{rr.origin} → {rr.destination}</p>
+                                           <p className="text-sm text-gray-600">Người đăng: {rr.passengerName} ({rr.passengerPhone})</p>
+                                           <p className="text-sm text-gray-500">Thời gian: {new Date(rr.pickupTime).toLocaleString('vi-VN')}</p>
+                                           <p className="text-sm text-gray-500 mt-1">Giá đề nghị: {rr.priceOffered.toLocaleString('vi-VN')}đ • Ghế cần: {rr.seatsNeeded || 1}</p>
+                                           {rr.referralFee && rr.referralFee > 0 && (
+                                               <p className="text-sm text-purple-600 font-medium mt-1">Hoa hồng: {rr.referralFee.toLocaleString('vi-VN')}đ</p>
+                                           )}
+                                           {rr.note && <p className="text-sm text-gray-700 mt-2">{rr.note}</p>}
+                                       </div>
+                                       <div className="flex flex-col gap-2 w-full md:w-auto">
+                                           <button type="button" onClick={() => { if(window.confirm('Duyệt yêu cầu này?')) { approveRideRequest(rr.id); } }} className="bg-green-600 text-white px-4 py-2 rounded">Duyệt</button>
+                                           <button type="button" onClick={() => { const reason = window.prompt('Lý do từ chối (tuỳ chọn):',''); if(reason !== null) { rejectRideRequest(rr.id, reason); } }} className="bg-red-100 text-red-700 px-4 py-2 rounded">Từ chối</button>
+                                       </div>
+                                   </div>
+                               ))}
+                           </div>
+                       )}
+                   </div>
                </div>
            )}
 

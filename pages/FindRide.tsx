@@ -24,13 +24,20 @@ export const FindRide: React.FC = () => {
 
   // Initial load
   useEffect(() => {
-    setFilteredRides(searchRides({}));
+    // Filter out rides that are full or past departure time
+    const now = new Date();
+    const availableRides = rides.filter(ride => {
+      const isFull = ride.seatsAvailable <= 0;
+      const isPast = new Date(ride.departureTime) < now;
+      return !isFull && !isPast;
+    });
+    setFilteredRides(availableRides);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rides]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setFilteredRides(searchRides({
+    const results = searchRides({
       origin,
       destination,
       date,
@@ -38,7 +45,17 @@ export const FindRide: React.FC = () => {
       specificDropoff,
       maxPrice: maxPrice ? Number(maxPrice) : undefined,
       rideType: rideType === 'ALL' ? undefined : rideType
-    }));
+    });
+    
+    // Filter out rides that are full or past departure time
+    const now = new Date();
+    const availableResults = results.filter(ride => {
+      const isFull = ride.seatsAvailable <= 0;
+      const isPast = new Date(ride.departureTime) < now;
+      return !isFull && !isPast;
+    });
+    
+    setFilteredRides(availableResults);
   };
 
   const clearFilters = () => {
@@ -49,7 +66,15 @@ export const FindRide: React.FC = () => {
     setSpecificDropoff('');
     setMaxPrice('');
     setRideType('ALL');
-    setFilteredRides(searchRides({}));
+    
+    // Filter out rides that are full or past departure time
+    const now = new Date();
+    const availableRides = rides.filter(ride => {
+      const isFull = ride.seatsAvailable <= 0;
+      const isPast = new Date(ride.departureTime) < now;
+      return !isFull && !isPast;
+    });
+    setFilteredRides(availableRides);
   };
 
   return (

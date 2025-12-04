@@ -189,10 +189,78 @@ export const Home: React.FC = () => {
                   <p className="ml-16 text-lg leading-6 font-medium text-gray-900">Linh hoạt lộ trình</p>
                 </dt>
                 <dd className="mt-2 ml-16 text-base text-gray-500">
-                  Dễ dàng tìm thấy các điểm đón trả linh hoạt trên trục đường Hà Nội - Phú Thọ - Việt Trì - Thanh Sơn.
+                  Dễ dàng tìm thấy các điểm đón trả linh hoạt trên trục đường Hà Nội - Phú Thọ - Hà Nội
                 </dd>
               </div>
             </dl>
+          </div>
+        </div>
+      </div>
+
+      {/* Contact Admin Section */}
+      <div className="py-12 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="px-6 py-8 sm:p-10 sm:pb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-extrabold text-gray-900 sm:text-3xl">
+                    Liên hệ với chúng tôi
+                  </h3>
+                  <p className="mt-3 text-base text-gray-500">
+                    Cần hỗ trợ hoặc có thắc mắc? Liên hệ ngay với admin để được tư vấn
+                  </p>
+                </div>
+                <div className="hidden sm:block">
+                  <Phone className="h-16 w-16 text-blue-500" />
+                </div>
+              </div>
+              
+              <div className="mt-8 space-y-4">
+                <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                  <div className="flex-shrink-0">
+                    <div className="h-12 w-12 rounded-full bg-blue-600 flex items-center justify-center">
+                      <Phone className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-500">Hotline hỗ trợ</p>
+                    <a 
+                      href="tel:0359750705"
+                      className="text-2xl font-bold text-blue-600 hover:text-blue-700"
+                    >
+                      0359.750.705
+                    </a>
+                  </div>
+                  <a 
+                    href="tel:0359750705"
+                    className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 shadow-md transition-transform transform hover:scale-105 flex items-center gap-2"
+                  >
+                    <Phone size={20} />
+                    Gọi ngay
+                  </a>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-sm font-medium text-gray-500">Email hỗ trợ</p>
+                    <a 
+                      href="mailto:daile2692003@gmail.com"
+                      className="text-base font-semibold text-gray-900 hover:text-blue-600 break-all"
+                    >
+                      vithaokf@gmail.com
+                    </a>
+                  </div>
+                  
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <p className="text-sm font-medium text-gray-500">Thời gian hỗ trợ</p>
+                    <p className="text-base font-semibold text-gray-900">
+                      24/7 - Luôn sẵn sàng
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
