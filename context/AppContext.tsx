@@ -280,6 +280,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
     }
   }, [currentUserId]);
 
+  // Auto-logout if current user is blocked
+  useEffect(() => {
+    if (currentUser && currentUser.isBlocked && !currentUser.isAdmin) {
+      alert("Tài khoản của bạn đã bị khóa. Bạn sẽ được đăng xuất.");
+      logout();
+    }
+  }, [currentUser?.isBlocked]);
+
   const login = (phoneOrUsername: string, password?: string) => {
     // Admin Login Logic
     if (phoneOrUsername === "admin") {
